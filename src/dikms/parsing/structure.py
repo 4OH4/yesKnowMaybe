@@ -15,6 +15,12 @@ _NUMBERED = re.compile(r"^\s*\d+(?:\.\d+)*\.?(?:\s+\S.*)?$")
 # A short ALL-CAPS line (common in government PDF section titles).
 _ALLCAPS = re.compile(r"^\s*[A-Z0-9][A-Z0-9 &/,'’\-]{2,80}$")
 
+# A line ending in a bare number is almost always a table-of-contents entry
+# (e.g. "2.4 Maritime 35"), not a body heading. Excluding these stops the ToC
+# from being detected as dozens of sections whose spans then bleed across
+# unrelated body chunks.
+_TOC_ENTRY = re.compile(r"\s\d{1,4}$")
+
 _SENTENCE_END = (".", ":", ";", ",")
 
 
@@ -34,6 +40,8 @@ def _is_heading(stripped: str) -> bool:
     if not (3 <= len(stripped) <= 90):
         return False
     if stripped.endswith(_SENTENCE_END):
+        return False
+    if _TOC_ENTRY.search(stripped):
         return False
     words = stripped.split()
     if _NUMBERED.match(stripped) and len(words) <= 12:
