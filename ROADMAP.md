@@ -20,11 +20,16 @@ No review queue UI yet — inspect raw output directly.
 entities and relations on real, messily-parsed and chunked material, before
 anything else is built around it.
 
-**Status (2026-07-24):** pipeline scaffold built and the parse/chunk stages
-validated on the real corpus (`dikms parse`/`chunk`). Remaining before M0 can
-exit: (1) GCP/Vertex set up so `dikms extract` can run (see SETUP.md), (2) run
-extraction and do the manual review, (3) capture that review as the eval seed,
-(4) replace the broken MOD Digital Strategy source URL.
+**Status (2026-07-24): COMPLETE.** Pipeline built and run end-to-end on the
+real corpus via Vertex/Gemini 2.5 Flash. Manual review done and captured as the
+eval seed (`notes/M0-review.md`). Extraction judged usable — well-typed,
+fully-provenanced entities/relations with verbatim supporting quotes. The
+ontology was tuned against real output from v0 to **v2** (Organisation with
+typed attributes; Capability/Location/Role; governance + investment relations;
+named individuals out of scope). Engineering hardening added along the way
+(per-chunk failure isolation, 429 backoff, ToC-heading fix). Deferred to M1:
+re-extract the corpus under v2, relation domain/range validation, proposal
+dedup, progress logging, and a Vertex quota increase — see `BACKLOG.md`.
 
 **Exit criteria:**
 - Extraction output reviewed manually and judged usable — i.e. review
@@ -36,6 +41,10 @@ extraction and do the manual review, (3) capture that review as the eval seed,
   set (see `DECISIONS.md` — eval set timing), not discarded once M0 ends.
 
 ## M1 — Traceability, span alignment, and storage
+
+**To start:** lock the storage choice (Spanner Graph vs alternative) — still
+flagged open in `DECISIONS.md` — before building any schema against it. This is
+the first M1 decision, not something to settle silently mid-build.
 
 Get extracted entities/relations into a real graph + vector store (Spanner
 Graph or alternative, per `DECISIONS.md`) with document/section-level
@@ -86,7 +95,7 @@ false transitive clustering is occurring.
 ## M4 — Graph exploration and entity detail views
 
 Node-centric graph browsing UI (one-hop expansion). Fixed-template entity
-detail pages (Programme, Company, Hardware, Standard) with click-through
+detail pages (Programme, Organisation, Hardware, Standard, Capability) with click-through
 traceability and significance-ranked supporting edges.
 
 **Exit criteria:** the three intended interfaces (chat, graph explorer,

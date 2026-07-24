@@ -28,9 +28,11 @@ Two problems this is meant to solve:
 
 ## Status
 
-Pre-build. See `ROADMAP.md` for the milestone plan, starting with M0
-(parsing, chunking, and extraction proof of concept on a small real
-document set).
+**M0 complete; starting M1.** The parsing → chunking → ontology-constrained
+extraction pipeline is built and has run end-to-end on a small real corpus via
+Vertex/Gemini; the ontology has been tuned against that output (now v2). See
+`notes/M0-review.md` for the M0 findings and `ROADMAP.md` for the plan. M1
+covers the graph + vector store, provenance-at-write, and span alignment.
 
 ## Document map
 

@@ -365,8 +365,9 @@ Graph visualisation).
 **Card search/browse.** Search (e.g. "government technology programmes")
 returns a set of cards; clicking a card opens a detail view. Detail view
 content is dynamic (pulled from the graph), but **v1 layout is a fixed
-template per entity type** (Programme, Company, Hardware, Standard), not
-genuinely agent-generated. True agent-generated layout (AG-UI), steered by
+template per entity type** (Programme, Organisation, Hardware, Standard,
+Capability), not genuinely agent-generated. True agent-generated layout
+(AG-UI), steered by
 the ontology and recognising entity categories, is a later roadmap item —
 deferred because it's the least technically proven part of the concept and
 creates tension with the traceability requirement if not carefully
@@ -374,15 +375,14 @@ constrained (see Decision: AG-UI deferral). Traceability in the fixed
 templates is available via click-through, with supporting edges ranked by
 significance where an entity has multiple sources.
 
-**Template coverage.** M4's fixed templates cover `Programme`, `Company`,
-`Hardware`, and `Standard` explicitly. `Term` and `Source` are also
-first-class, clickable entity types and need their own (simpler) templates
-in M4 too, not a later add-on — a `Term` node with no detail view is a
-dead end a user will hit early. `Tender` similarly needs a minimal template
-once it has real data behind it. These can be lighter-weight than the four
-main types (e.g. `Term`: definition, related entities, sources it appears
-in; `Source`: authoritativeness, what it contributed, ingestion date) but
-should exist from M4, not be silently deferred alongside AG-UI.
+**Template coverage.** M4's fixed templates cover `Programme`, `Organisation`,
+`Hardware`, `Standard`, and `Capability` explicitly. The remaining first-class,
+clickable types — `Term`, `Source`, `Tender`, `Location`, `Role` — need their
+own (simpler) templates in M4 too, not a later add-on: a `Term` node with no
+detail view is a dead end a user will hit early. These can be lighter-weight
+than the main types (e.g. `Term`: definition, related entities, sources it
+appears in; `Source`: authoritativeness, what it contributed, ingestion date)
+but should exist from M4, not be silently deferred alongside AG-UI.
 
 ## Gap detection (experimental, not v1 core)
 

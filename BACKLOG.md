@@ -4,23 +4,35 @@ One-line items — intent and rough constraint only. Expand conversationally
 with Claude Code when actually briefing a piece of work; don't treat these
 as specs.
 
-## M0
-- [done] Draft initial ontology (entity types, relation types, including Tender) as a config file, not hardcoded
-- [partly done] Pick and hand-select the small real document set — 3 chosen (data/sources.yaml); the MOD Digital Strategy URL 404s and needs a working replacement
-- [done] Build PDF parsing (text + section/page structure) and HTML main-content extraction — validated on the real DIP (text-native, 81pp) and Naval News article
+## M0 — complete
+All items done. Outcome: parsing/chunking/extraction pipeline built and run
+end-to-end on the real corpus (see `notes/M0-review.md`); ontology tuned from
+v0 to **v2** (Organisation with typed attributes; Capability/Location/Role;
+governance + investment relations; named individuals out of scope).
+- [done] Draft initial ontology as a config file, not hardcoded
+- [done] Pick and hand-select the small real document set — 3 chosen (data/sources.yaml), all fetch/parse cleanly
+- [done] Build PDF parsing (text + section/page structure) and HTML main-content extraction
 - [done] Build structure-respecting chunking, retaining chunk position relative to the parsed document
-- [done] Pick extraction model (default: Gemini via Vertex AI, Pro vs Flash decided against M0 output) — cost sanity-check still pending a real run
-- [done] Write the extraction prompt/pipeline, constrained to the ontology config, returning supporting quotes not claimed offsets — built; not yet run (needs GCP/Vertex, see SETUP.md)
-- [blocked: needs GCP] Manually review raw extraction output against the source documents; note failure patterns
-- [pending] Capture manual review notes/labels as the seed of the eval set (don't discard at M0 end)
+- [done] Pick extraction model — Gemini 2.5 Flash via Vertex; per-doc cost negligible at Flash pricing on the M0 corpus (a formal envelope is still worth a check before volume)
+- [done] Write the ontology-constrained extraction prompt/pipeline, returning supporting quotes not claimed offsets
+- [done] Manually review raw extraction output against the sources; failure patterns noted (`notes/M0-review.md`)
+- [done] Capture manual review notes as the seed of the eval set (`notes/M0-review.md`)
 
 ## M1
-- Stand up chosen graph + vector store (Spanner Graph, or whatever's decided in DECISIONS.md by this point)
-- Define storage schema for entities/relations including mandatory document/section provenance fields and optional exact-span fields
-- Build post-hoc span alignment step: match extraction-returned quotes against source text to derive verified offsets; mark unaligned facts explicitly rather than dropping or faking a span
+Storage, provenance-at-write, and span alignment. Core:
+- **Lock the storage choice first** — confirm Spanner Graph or an alternative (open in `DECISIONS.md`) before building any schema; don't build against an unconfirmed store
+- Define storage schema for entities/relations including mandatory document/section provenance fields and optional exact-span fields (model the pipeline's Provenance/AlignmentStatus already in `dikms.models`)
+- Build post-hoc span alignment step: match extraction-returned quotes against source text to derive verified offsets; mark unaligned facts explicitly (AlignmentStatus) rather than dropping or faking a span
 - Write ingestion code: extraction output → store, with provenance attached at write time
 - Manual query script to trace any stored fact back to its source, with and without a resolved span
-- Formalise the M0 eval set into something reusable for regression checks
+- Formalise the M0 eval set into something reusable for regression checks — must tolerate run-to-run non-determinism (temperature 0 still varied), not exact-match
+
+Carried from the M0 review (hardening, do alongside M1):
+- Re-extract the corpus under ontology v2 (current committed outputs are v1-era) to produce real v2 data to ingest
+- Add relation domain/range validation (the `part_of` overload passes silently today — validator only checks type existence)
+- De-duplicate/aggregate type proposals before review (they recur per chunk)
+- Add `--verbose` per-chunk progress logging for long runs (DIP is opaque for ~25 min)
+- Request a Vertex Gemini quota increase before larger runs; consider a service account instead of personal-user ADC for unattended runs
 
 ## M2
 - Design review queue data model (item, type, priority tier, status)
@@ -42,8 +54,8 @@ as specs.
 
 ## M4
 - Build node-centric graph explorer (one-hop expansion from a selected entity)
-- Build fixed detail-view templates for Programme, Company, Hardware, Standard
-- Build lighter-weight detail-view templates for Term, Source, and Tender
+- Build fixed detail-view templates for Programme, Organisation, Hardware, Standard, Capability
+- Build lighter-weight detail-view templates for Term, Source, Tender, Location, Role
 - Wire click-through traceability and significance-ranked source edges into detail views
 - Build card-based search/browse UI
 
