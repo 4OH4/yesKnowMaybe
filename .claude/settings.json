@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "mcp__linear-server__list_issues",
+      "mcp__linear-server__get_issue",
+      "mcp__linear-server__list_issue_statuses",
+      "mcp__linear-server__list_issue_labels",
+      "mcp__linear-server__list_projects",
+      "mcp__linear-server__get_project",
+      "mcp__linear-server__get_team",
+      "mcp__linear-server__list_comments",
+      "mcp__linear-server__save_issue",
+      "mcp__linear-server__save_comment",
+      "mcp__linear-server__create_attachment",
+      "Bash(git *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(uv sync)",
+      "Bash(uv sync *)",
+      "Bash(uv lock)",
+      "Bash(uv run pytest)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(uv run dikms *)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -fd*)",
+      "Bash(gh pr merge*)"
+    ]
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh",
+            "args": ["-NoProfile", "-File", ".claude/hooks/notify.ps1"],
+            "async": true,
+            "timeout": 20,
+            "statusMessage": "Notifying"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh",
+            "args": ["-NoProfile", "-File", ".claude/hooks/notify.ps1"],
+            "async": true,
+            "timeout": 20,
+            "statusMessage": "Notifying"
+          }
+        ]
+      }
+    ]
+  }
+}
