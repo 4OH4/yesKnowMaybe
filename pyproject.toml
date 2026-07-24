@@ -7,7 +7,10 @@ name = "dikms"
 version = "0.0.0"
 description = "Defence Industry Knowledge Management System — ingestion, extraction and retrieval backend"
 readme = "README.md"
-requires-python = ">=3.11"
+# Upper bound: kuzu ships no cp314 wheel yet and its source build is heavy, so
+# the embedded store backend needs 3.11–3.13. Lift the cap once kuzu publishes
+# a Python 3.14 wheel.
+requires-python = ">=3.11,<3.14"
 license = { text = "Proprietary" }
 authors = [{ name = "Rupert Thomas" }]
 
@@ -16,11 +19,14 @@ authors = [{ name = "Rupert Thomas" }]
 #   pypdf        — text-native PDF parsing with page structure (pure-Python, MIT)
 #   trafilatura  — HTML main-content extraction, stripping nav/boilerplate/ads
 #   google-genai — Gemini extraction via Vertex AI (see DECISIONS.md)
+#   kuzu         — embedded graph + vector store; the storage adapter's local
+#                  backend (DECISIONS.md: knowledge store), no running infra
 dependencies = [
     "pyyaml>=6.0",
     "pypdf>=5.0",
     "trafilatura>=1.12",
     "google-genai>=1.0",
+    "kuzu>=0.6",
 ]
 
 [project.optional-dependencies]

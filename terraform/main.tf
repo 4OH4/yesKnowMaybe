@@ -18,6 +18,14 @@ terraform {
       version = "~> 6.0"
     }
   }
+
+  # Remote state in GCS so it survives destroy/apply cycles and isn't tied to
+  # one machine. The bucket is created out-of-band (not managed here) so a
+  # `terraform destroy` of the deployment never removes the state itself.
+  backend "gcs" {
+    bucket = "yesknowmaybe-tfstate"
+    prefix = "dikms"
+  }
 }
 
 provider "google" {
