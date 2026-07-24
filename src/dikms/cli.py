@@ -71,10 +71,17 @@ def main(argv: list[str] | None = None) -> int:
 
 def _cmd_fetch(args, sources) -> int:
     targets = [get_source(sources, args.only)] if args.only else sources
+    failures = 0
     for s in targets:
-        path = fetch_source(s, args.corpus, force=args.force)
+        try:
+            path = fetch_source(s, args.corpus, force=args.force)
+        except (OSError, ValueError) as exc:
+            # Don't let one dead URL abort the whole batch — report and continue.
+            failures += 1
+            print(f"{s.id}: FAILED — {exc}", file=sys.stderr)
+            continue
         print(f"{s.id}: {path} ({path.stat().st_size:,} bytes)")
-    return 0
+    return 1 if failures else 0
 
 
 def _cmd_parse(args, sources) -> int:
