@@ -1,0 +1,20 @@
+# Extraction / Vertex configuration.
+#
+# `project` and `location` fall back to the GOOGLE_CLOUD_PROJECT /
+# GOOGLE_CLOUD_LOCATION environment variables if left blank, so credentials
+# and project config need not be duplicated here. See SETUP.md.
+
+vertex:
+  project: ""            # e.g. "my-gcp-project"; or set GOOGLE_CLOUD_PROJECT
+  location: "europe-west2"
+
+extraction:
+  # Default to a Flash-class model for the M0 pass; the Pro-vs-Flash (and
+  # Gemini generation) decision is made against real M0 output on the
+  # accuracy/cost trade-off (DECISIONS.md: extraction model).
+  model: "gemini-2.5-flash"
+  temperature: 0.0
+
+chunking:
+  target_chars: 6000
+  max_chars: 9000
