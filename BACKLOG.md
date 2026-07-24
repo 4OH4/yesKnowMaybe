@@ -25,8 +25,8 @@ a thin storage-adapter interface with Kùzu as an embedded, unattended-buildable
 backend. Core:
 - **Define the storage-adapter interface first** — node/edge upsert with arbitrary edge properties, multi-hop traversal, vector similarity; schema must be expressible in both backends. Build against the interface, never Spanner APIs directly
 - Implement the **Kùzu backend** (embedded, no credentials) so M1 storage/query is buildable and testable unattended
-- Implement the **Spanner Graph backend** behind the same interface (exercised when Vertex/Spanner credentials are present; instance provisioning is a manual human step, not an automated story)
-- Pin the **Vertex embedding model + output dimension** before freezing schema (the vector column width depends on it); record it in `config/extraction.yaml`
+- Implement the **Spanner Graph backend** behind the same interface (exercised when Vertex/Spanner credentials are present; instance + service account provisioned via Terraform in `terraform/`, but running `apply` is a manual human step, not an automated story)
+- [done] **Vertex embedding model + dimension pinned** — `gemini-embedding-001` at full 3072 width, recorded in `config/extraction.yaml`; the store's vector column width follows this
 - Define storage schema for entities/relations including mandatory document/section provenance fields and optional exact-span fields (model the pipeline's Provenance/AlignmentStatus already in `dikms.models`)
 - Build post-hoc span alignment step: match extraction-returned quotes against source text to derive verified offsets; mark unaligned facts explicitly (AlignmentStatus) rather than dropping or faking a span
 - Write ingestion code: extraction output → store, with provenance attached at write time
@@ -38,7 +38,8 @@ Carried from the M0 review (hardening, do alongside M1):
 - Add relation domain/range validation (the `part_of` overload passes silently today — validator only checks type existence)
 - De-duplicate/aggregate type proposals before review (they recur per chunk)
 - Add `--verbose` per-chunk progress logging for long runs (DIP is opaque for ~25 min)
-- Request a Vertex Gemini quota increase before larger runs; consider a service account instead of personal-user ADC for unattended runs
+- Request a Vertex Gemini quota increase before larger runs (still outstanding — human step)
+- [done] Service account for unattended runs — provisioned via Terraform (`terraform/iam.tf`) with ADC impersonation (no key file); replaces personal-user ADC once `impersonating_principal` is set
 
 ## M2
 - Design review queue data model (item, type, priority tier, status)

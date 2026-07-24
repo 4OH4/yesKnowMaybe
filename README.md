@@ -1,7 +1,6 @@
-# Defence Industry Knowledge Management System
+# Industry Knowledge Management System
 
-A personal knowledge management system for tracking UK defence industry programmes,
-technologies, hardware, companies, standards, and open tenders from open sources.
+A knowledge management system for tracking UK industry programmes, technologies, hardware, companies, standards, and tenders from open sources.
 
 ## What this is
 
@@ -10,16 +9,56 @@ extracts structured knowledge into a hybrid knowledge graph + vector store
 against a defined ontology, and you query it via natural language chat, a
 node-centric graph explorer, and a card-based search/browse interface.
 
-This is a personal side project, built substantially with Claude Code, not a
-commercial product. It is not a CC-branded tool and does not reference or store
-any real client or export-controlled material — all sources are open and
-public.
+## High-level architecture
+
+```mermaid
+flowchart TD
+    src[["Sources<br/>(docs, web pages)"]]
+
+    subgraph ingest["Ingestion / extraction"]
+        direction TB
+        parse["Document parsing<br/>clean text + structural metadata"]
+        chunk["Chunking<br/>respects document structure"]
+        extract["LLM extraction<br/>ontology-constrained, per chunk<br/>(Vertex / Gemini)"]
+        align["Span alignment<br/>post-hoc, verified spans"]
+        resolve["Entity resolution<br/>alias → embedding → LLM → human"]
+        parse --> chunk --> extract --> align --> resolve
+    end
+
+    review["Review queue<br/>priority-tiered HITL"]
+    store[("Knowledge store<br/>hybrid graph + vector<br/>Spanner Graph / Kùzu adapter<br/>full provenance")]
+    retrieval{{"Retrieval agent<br/>dual-channel, iterative"}}
+
+    subgraph ui["Interfaces"]
+        direction LR
+        chat["Chat"]
+        explorer["Graph explorer<br/>node-centric, one-hop"]
+        cards["Card search / browse<br/>fixed templates (v1)"]
+    end
+
+    gap["Gap detection<br/>structural + staleness signals<br/>→ agentic web research"]
+
+    src --> parse
+    resolve -->|"candidates + confidence"| review
+    review -->|approved| store
+    store --> retrieval
+    retrieval <--> chat
+    retrieval --> explorer
+    retrieval --> cards
+    store -.-> gap
+    gap -.->|research results| review
+
+    classDef experimental stroke-dasharray: 4 3;
+    class gap experimental;
+```
+
+See `ARCHITECTURE.md` for the full design._
 
 ## Why
 
 Two problems this is meant to solve:
 
-- **Retention** — knowledge about this space currently lives in people's heads
+- **Retention** — knowledge often lives in people's heads
   and scattered documents; things get forgotten or take too long to
   rediscover.
 - **Discovery** — new, relevant developments get found too late, after the
@@ -28,11 +67,7 @@ Two problems this is meant to solve:
 
 ## Status
 
-**M0 complete; starting M1.** The parsing → chunking → ontology-constrained
-extraction pipeline is built and has run end-to-end on a small real corpus via
-Vertex/Gemini; the ontology has been tuned against that output (now v2). See
-`notes/M0-review.md` for the M0 findings and `ROADMAP.md` for the plan. M1
-covers the graph + vector store, provenance-at-write, and span alignment.
+*Work in progress*
 
 ## Document map
 
@@ -48,8 +83,4 @@ covers the graph + vector store, provenance-at-write, and span alignment.
 
 ## Confidentiality
 
-All source material is open and public (government publications, press
-releases, company websites, standards documents). No client-identifying or
-classified/export-controlled material is to be ingested or stored in this
-system. If that ever changes, infrastructure moves in-house — see
-`DECISIONS.md`.
+All source material is open source and public (government publications, press releases, company websites, standards documents). No classified/export-controlled material is to be ingested or stored in this system.

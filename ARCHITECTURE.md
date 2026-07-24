@@ -323,14 +323,27 @@ score visible alongside each group.
 
 ## Knowledge store
 
-Hybrid graph + vector store. Candidate: Spanner Graph (native GQL, built-in
-vector search, supports the GraphRAG pattern) — a credible option, not yet
-locked in (see `DECISIONS.md`). Whatever the final choice, it must support:
+Hybrid graph + vector store. **Locked (see `DECISIONS.md`):** Spanner Graph
+(native GQL, built-in vector search, GraphRAG-ready) is the canonical/production
+target, but all ingestion, provenance-write and query code is built against a
+**thin storage-adapter interface**, not against Spanner APIs directly. **Kùzu**
+(embedded, Cypher, native vector index, no running infrastructure) is a
+first-class backend behind the same interface, used for local development and
+unattended automation (no credentials, nothing to provision). The adapter
+surface — and therefore either backend — must support:
 
 - Native graph traversal (multi-hop)
-- Vector similarity search over the same data
+- Vector similarity search over the same data (vectors are Vertex
+  `gemini-embedding` at full 3072 width — see `DECISIONS.md`: embeddings)
 - Storing arbitrary edge properties (confidence, source, timestamp) without
   contortion
+
+Schema is application-owned (the adapter's migrations), not baked into the store
+by infrastructure; it must be expressible against both backends, and `same_as`
+is stored as pairwise edges in each — never a merged group id — per the
+transitivity constraint under Entity Resolution. Spanner and its service account
+are provisioned as Terraform (`terraform/`); running `apply` is a manual human
+step, but the embedded Kùzu path needs none of that.
 
 ## Retrieval
 
