@@ -6,6 +6,40 @@ was decided, why, and what alternatives were considered.
 
 ---
 
+### Ontology v2: capability/location/role added, governance + investment relations; named individuals out of scope
+**Decision:** From the M0 review (see `notes/M0-review.md`), ontology bumped to
+version 2:
+- **New entity types:** `Capability` (an ability to achieve an effect, distinct
+  from the delivering programme and the realising hardware), `Location` (one
+  type covering sites/facilities/infrastructure), and `Role` (an organisational
+  post).
+- **New relations:** `governs`, `member_of` (organisational governance);
+  `invests_in`, `supports` (investment). `part_of` extended to organisations,
+  `develops`/`delivers`/`funds` extended to cover `Capability`.
+- **Named individuals are out of scope.** People are NOT extracted or stored;
+  where a named person holds a post, only the `Role` is captured. Enforced in
+  the extraction prompt.
+- **Over-granular proposals rejected** (specific technologies, fighter
+  generations, sub-strategies). Handled by prompt guidance steering such items
+  to existing broad types, not by adding entity types.
+**Why:** Both policy documents (MOD Digital Strategy, Defence Investment Plan)
+independently proposed the governance/investment relations and a `Capability`
+type — strong convergent evidence of a real gap, not one document's quirk.
+`Role` without `Person` keeps the useful organisational structure (who holds
+what post) while avoiding a store of named individuals, which adds personal-data
+handling obligations for no benefit to a programme/capability knowledge tool.
+**Alternatives considered:**
+- Adopt `Person` as well as `Role` — rejected by the owner; named individuals
+  are deliberately excluded.
+- Separate `Facility`/`Infrastructure`/`Site` types — rejected in favour of one
+  `Location` type; the distinctions weren't worth the ontology weight.
+- Adopt the long tail of overlapping relation verbs and granular entity
+  proposals — rejected; consolidated / steered via prompt guidance instead.
+**Deferred (not in v2):** `Person`; procurement relations (`procures`,
+`supplies`, …); domain/range validation of relations; proposal dedup.
+
+---
+
 ### `Organisation` replaces `Company`; kind and nationality are attributes
 **Decision:** Merge `Company` into a broader `Organisation` entity type
 covering governmental and non-governmental bodies alike (companies,

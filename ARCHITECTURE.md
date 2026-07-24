@@ -61,6 +61,14 @@ extraction is run):**
   showed the ontology had no home for government/military bodies (see
   `DECISIONS.md`).
 - `Hardware` — e.g. Ajax, F-35, specific radar systems
+- `Capability` — an ability to achieve a military effect (e.g. integrated air
+  and missile defence, ISTAR), distinct from the delivering `Programme` and the
+  realising `Hardware`. Added in ontology v2 after M0 review.
+- `Location` — a geographic place, site, base or facility (sites, facilities
+  and infrastructure as one type). Added in ontology v2.
+- `Role` — an organisational post (e.g. Chief Information Officer), captured as
+  the position, not the individual. Named individuals are out of scope and are
+  never extracted or stored (see `DECISIONS.md`). Added in ontology v2.
 - `Standard` — e.g. Cursor on Target, Link 16, Sapient
 - `Source` — a document or web page; retained as a first-class node, not
   metadata, so facts can be traced to source credibility
@@ -78,11 +86,17 @@ extraction is run):**
 
 **Initial relation types:**
 
-- `develops` / `delivers` (Organisation → Programme, Organisation → Hardware)
-- `part_of` (Programme → Programme, Hardware → Programme)
+- `develops` / `delivers` (Organisation → Programme/Hardware/Capability)
+- `part_of` (Programme → Programme, Hardware → Programme, Organisation →
+  Organisation) — extended to organisational hierarchy in v2
 - `implements_standard` (Hardware/Programme → Standard)
-- `funds` (Organisation → Programme, Programme → Programme) — a government
-  body funding a programme is now an `Organisation` source, not a special case
+- `funds` (Organisation/Programme → Programme/Hardware/Capability) — a
+  government body funding a programme is an `Organisation` source, not a
+  special case
+- `invests_in` (Organisation/Programme → Programme/Capability) — v2
+- `supports` (Organisation/Programme → Programme/Capability/Term) — v2
+- `governs` (Organisation → Programme/Organisation) — v2
+- `member_of` (Organisation → Organisation) — v2
 - `extracted_from` (any entity/relation → Source) — the provenance edge,
   mandatory on every extraction
 - `same_as` — confidence-weighted, see Entity Resolution below

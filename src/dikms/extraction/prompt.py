@@ -33,7 +33,14 @@ character positions or offsets.
 5. Populate an entity's declared `attributes` where the text supports them, \
 choosing from the controlled vocabulary when one is listed; omit any attribute \
 you cannot ground in the text.
-6. Respond with a single JSON object and nothing else.
+6. Do NOT extract named individual people. Where a named person holds a post, \
+extract the Role (the post itself, e.g. "Chief Information Officer"), never the \
+person's name.
+7. Prefer the existing broad types. Do not propose a new entity type for \
+something that is an instance of an existing type — a specific technology, \
+standard, platform variant or sub-initiative belongs under Term / Standard / \
+Hardware / Programme, not a new type.
+8. Respond with a single JSON object and nothing else.
 """
 
 _SCHEMA = """\

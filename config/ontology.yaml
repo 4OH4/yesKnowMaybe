@@ -8,7 +8,7 @@
 # proposals), but nothing here changes without explicit human approval.
 # Bump `version` whenever a type is added, removed or materially redefined.
 
-version: 1
+version: 2
 
 # Types the extraction LLM should populate. `examples` steer extraction and
 # disambiguation; they are illustrative, not an enum.
@@ -47,6 +47,26 @@ entity_types:
       A physical platform, system, or piece of equipment.
     examples: [Ajax, F-35, Type 83 destroyer, a specific radar system]
 
+  - name: Capability
+    description: >-
+      A defence capability — an ability to achieve a military effect, distinct
+      from the Programme that delivers it and the Hardware that realises it.
+    examples: [Integrated Air and Missile Defence, ISTAR, deep strike]
+
+  - name: Location
+    description: >-
+      A geographic place, site, base or facility. Covers sites, facilities and
+      infrastructure as one type rather than several.
+    examples: [HMNB Clyde, Barrow-in-Furness shipyard, a named airbase]
+
+  - name: Role
+    description: >-
+      An organisational role or post, captured as the position itself (e.g.
+      Chief Information Officer, Senior Responsible Owner). Named individuals
+      holding a role are deliberately NOT extracted or stored — see
+      DECISIONS.md (named individuals out of scope).
+    examples: [Chief Information Officer, Senior Responsible Owner]
+
   - name: Standard
     description: >-
       A technical standard, protocol, or interoperability specification.
@@ -79,19 +99,21 @@ entity_types:
 # resolution, mentions) rather than freely emitted as domain facts.
 relation_types:
   - name: develops
-    description: An organisation develops a programme or piece of hardware.
+    description: An organisation develops a programme, capability or piece of hardware.
     domain: [Organisation]
-    range: [Programme, Hardware]
+    range: [Programme, Hardware, Capability]
 
   - name: delivers
-    description: An organisation delivers a programme or piece of hardware.
+    description: An organisation delivers a programme, capability or piece of hardware.
     domain: [Organisation]
-    range: [Programme, Hardware]
+    range: [Programme, Hardware, Capability]
 
   - name: part_of
-    description: A programme or piece of hardware is part of a larger programme.
-    domain: [Programme, Hardware]
-    range: [Programme]
+    description: >-
+      One entity is part of a larger one — a programme within a programme, a
+      hardware subsystem, or an organisation within a larger organisation.
+    domain: [Programme, Hardware, Organisation]
+    range: [Programme, Organisation]
 
   - name: implements_standard
     description: A piece of hardware or programme implements a standard.
@@ -99,9 +121,29 @@ relation_types:
     range: [Standard]
 
   - name: funds
-    description: An organisation (e.g. a government body) or programme funds a programme.
+    description: An organisation (e.g. a government body) or programme funds a programme, capability or hardware.
     domain: [Organisation, Programme]
-    range: [Programme]
+    range: [Programme, Hardware, Capability]
+
+  - name: invests_in
+    description: An organisation or programme directs investment towards a programme or capability.
+    domain: [Organisation, Programme]
+    range: [Programme, Capability]
+
+  - name: supports
+    description: An organisation or programme supports or enables a programme, capability or concept.
+    domain: [Organisation, Programme]
+    range: [Programme, Capability, Term]
+
+  - name: governs
+    description: An organisation governs or sets strategic direction for a programme or another organisation.
+    domain: [Organisation]
+    range: [Programme, Organisation]
+
+  - name: member_of
+    description: An organisation is a member of another organisation (e.g. an alliance or board).
+    domain: [Organisation]
+    range: [Organisation]
 
   - name: extracted_from
     description: >-
