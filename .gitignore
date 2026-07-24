@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local environment / secrets — never commit credentials
+.env
+*.key
+*.json.key
+application_default_credentials.json
+
+# Fetched source corpus and pipeline output — large, reproducible, not source-controlled.
+# The manifest (data/sources.yaml) IS tracked; the downloaded documents are not.
+data/corpus/
+output/
+
+# Terraform local state
+terraform/.terraform/
+*.tfstate
+*.tfstate.*
+terraform/.terraform.lock.hcl
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
