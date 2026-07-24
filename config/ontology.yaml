@@ -1,0 +1,111 @@
+# Ontology — versioned entity and relation types.
+#
+# This is a STARTING POINT for M0 (ARCHITECTURE.md), expected to be revised
+# once real extraction output shows what the documents actually produce.
+#
+# Growth is human-in-the-loop only (DECISIONS.md: "Ontology growth gating").
+# The extraction agent MAY PROPOSE new types (surfaced separately as
+# proposals), but nothing here changes without explicit human approval.
+# Bump `version` whenever a type is added, removed or materially redefined.
+
+version: 0
+
+# Types the extraction LLM should populate. `examples` steer extraction and
+# disambiguation; they are illustrative, not an enum.
+entity_types:
+  - name: Programme
+    description: >-
+      A named defence programme, project, or initiative.
+    examples: [Sense-Decide-Effect, Digital Targeting Web, ASGARD, FADS]
+
+  - name: Company
+    description: >-
+      A commercial entity — prime contractor, SME, or any supplier.
+    examples: [BAE Systems, Leonardo, a named SME]
+
+  - name: Hardware
+    description: >-
+      A physical platform, system, or piece of equipment.
+    examples: [Ajax, F-35, Type 83 destroyer, a specific radar system]
+
+  - name: Standard
+    description: >-
+      A technical standard, protocol, or interoperability specification.
+    examples: [Cursor on Target, Link 16, Sapient]
+
+  - name: Term
+    description: >-
+      Domain vocabulary worth tracking as a concept in its own right, not
+      merely as an alias of another entity.
+    examples: [DDIL, DLOD, Digital Backbone]
+
+  - name: Tender
+    description: >-
+      An invitation to tender, open or historical. Time-bounded by nature
+      (open/closed status, closing date). The entity type exists from M0
+      even though active tender monitoring (pull ingestion) is out of scope,
+      because push-ingested documents will reference tenders.
+    examples: [a named procurement competition]
+
+  - name: Source
+    description: >-
+      A document or web page. A first-class node (not metadata) so facts can
+      be traced to source credibility. Source nodes are created by the
+      ingestion pipeline, not proposed by the extraction LLM.
+    system_managed: true
+    examples: [The Defence Investment Plan, a company press release]
+
+# Relations the extraction LLM should populate, with domain/range guidance.
+# `structural` relations are managed by the pipeline (provenance, entity
+# resolution, mentions) rather than freely emitted as domain facts.
+relation_types:
+  - name: develops
+    description: A company develops a programme or piece of hardware.
+    domain: [Company]
+    range: [Programme, Hardware]
+
+  - name: delivers
+    description: A company delivers a programme or piece of hardware.
+    domain: [Company]
+    range: [Programme, Hardware]
+
+  - name: part_of
+    description: A programme or piece of hardware is part of a larger programme.
+    domain: [Programme, Hardware]
+    range: [Programme]
+
+  - name: implements_standard
+    description: A piece of hardware or programme implements a standard.
+    domain: [Hardware, Programme]
+    range: [Standard]
+
+  - name: funds
+    description: A programme or government body funds a programme.
+    domain: [Programme, Company]
+    range: [Programme]
+
+  - name: extracted_from
+    description: >-
+      Provenance edge from any extracted entity/relation to its Source.
+      Mandatory on every extraction — attached by the pipeline, not emitted
+      by the LLM.
+    structural: true
+    domain: ["*"]
+    range: [Source]
+
+  - name: same_as
+    description: >-
+      Confidence-weighted identity link between two distinct nodes. Never a
+      destructive merge. Created by the entity-resolution pipeline (M2), not
+      by the extraction LLM.
+    structural: true
+    domain: ["*"]
+    range: ["*"]
+
+  - name: mentions
+    description: >-
+      A Source mentions an existing entity — lighter-weight than a
+      substantive relation; used for "mention of existing data" review items.
+    structural: true
+    domain: [Source]
+    range: ["*"]
