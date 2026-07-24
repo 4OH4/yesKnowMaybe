@@ -29,14 +29,16 @@ dependencies = [
     "kuzu>=0.6",
 ]
 
-[project.optional-dependencies]
+[project.scripts]
+dikms = "dikms.cli:main"
+
+# Dev tooling as a uv dependency group (installed by `uv sync` by default, not
+# shipped with the package). See DECISIONS.md: project managed with uv.
+[dependency-groups]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
 ]
-
-[project.scripts]
-dikms = "dikms.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dikms"]

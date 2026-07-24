@@ -6,21 +6,29 @@ AI enabled and credentials.
 
 ## 1. Python environment
 
-Requires Python 3.11+.
+The project is managed with [uv](https://docs.astral.sh/uv/). Python 3.13 is
+pinned in `.python-version` (kuzu, the embedded store backend, has no 3.14 wheel
+yet — see `pyproject.toml`). One command creates the venv on the right Python
+and installs everything, including the dev group:
 
 ```bash
-python -m venv .venv
-# Windows PowerShell:  .venv\Scripts\Activate.ps1
-# bash/zsh:            source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync
 ```
+
+Run project commands through uv (no manual venv activation needed):
+
+```bash
+uv run dikms --help
+```
+
+`uv.lock` is committed, so the resolved dependency set is reproducible.
 
 ## 2. Fetch the corpus and run parse/chunk (no GCP needed)
 
 ```bash
-dikms fetch
-dikms parse defence-investment-plan --show 500
-dikms chunk navalnews-fads-type83-2025
+uv run dikms fetch
+uv run dikms parse defence-investment-plan --show 500
+uv run dikms chunk navalnews-fads-type83-2025
 ```
 
 Downloaded documents land in `data/corpus/` (gitignored). A PDF that yields
@@ -64,7 +72,7 @@ cloud path needs: the Vertex AI and Spanner APIs, the Spanner Graph instance +
 ## 4. Run extraction
 
 ```bash
-dikms extract navalnews-fads-type83-2025
+uv run dikms extract navalnews-fads-type83-2025
 ```
 
 Writes `output/<id>.json` (machine record, full provenance) and

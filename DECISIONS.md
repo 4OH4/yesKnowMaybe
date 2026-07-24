@@ -6,6 +6,25 @@ was decided, why, and what alternatives were considered.
 
 ---
 
+### Project managed with uv, pinned to Python 3.13
+**Decision:** The project uses **uv** for Python, virtualenv and dependency
+management. Python is pinned to **3.13** via `.python-version`; `uv.lock` is
+committed for reproducible resolution. Dev tooling (pytest, ruff) is a uv
+`[dependency-groups]` group, not a shipped optional extra. The hatchling build
+backend is unchanged.
+**Why:** The embedded store backend (kuzu) has no cp314 wheel yet and its source
+build is heavy, so the working 3.14 venv could not install it — the project
+needs a supported interpreter now that kuzu is a core dependency. uv pins the
+interpreter and locks the dependency set in one tool, which matters for the
+unattended-automation model (a background session gets the exact same
+environment from `uv sync`, no drift). `requires-python` is capped at `<3.14`
+to match; lift once kuzu ships a 3.14 wheel.
+**Alternatives considered:** stay on 3.14 and wait for a kuzu wheel — rejected,
+blocks M1 storage work now; plain venv+pip — rejected, no lockfile and no
+interpreter pinning, weaker reproducibility for automated runs.
+
+---
+
 ### Knowledge store: Spanner Graph is the canonical target, behind a thin storage-adapter interface with Kùzu as an embedded backend
 **Decision:** Lock the M1 storage direction as **Spanner Graph** (native GQL,
 integrated vector search, GraphRAG-ready) as the canonical/production target,
