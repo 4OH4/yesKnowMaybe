@@ -11,14 +11,13 @@ sources:
   - id: mod-digital-strategy-2021
     title: "Digital Strategy for Defence: Delivering the Digital Backbone"
     publisher: Ministry of Defence
-    url: "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/990114/20210421_-MOD_Digital_Strategy-Update-_Final.pdf"
+    url: "https://assets.publishing.service.gov.uk/media/60afae56d3bf7f435f43c7af/20210421_-_MOD_Digital_Strategy_-_Update_-_Final.pdf"
     format: pdf
     authoritativeness: high
     authoritativeness_basis: "rule: publishing.service.gov.uk (UK government)"
-    # WARNING: this URL returns HTTP 404 (checked 2026-07-24). Needs a working
-    # replacement URL before it can be ingested — left in place, not guessed.
-    status: url-broken
-    notes: "Government strategy PDF; URL 404s, replacement needed. Text-native assumed once fetchable."
+    # Text-native assumption to be confirmed at parse time; scanned PDFs are
+    # out of scope for v1 (ARCHITECTURE.md).
+    notes: "Government strategy PDF; text-native assumed."
 
   - id: defence-investment-plan
     title: "The Defence Investment Plan"
