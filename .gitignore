@@ -16,6 +16,7 @@ terraform/terraform.tfvars
 *.key
 *.json.key
 application_default_credentials.json
+.claude/settings.local.json
 
 # Fetched source corpus and pipeline output — large, reproducible, not source-controlled.
 # The manifest (data/sources.yaml) IS tracked; the downloaded documents are not.
