@@ -6,6 +6,58 @@ was decided, why, and what alternatives were considered.
 
 ---
 
+### Ontology v3: four relation domain/range constraints widened, the rest held
+**Decision:** Approved (HITL, YES-7) — widen four declared constraints to match
+observed valid usage, and bump the ontology to **version 3**:
+
+| Relation | Change |
+|---|---|
+| `develops` | `domain` += `Programme` |
+| `delivers` | `domain` += `Programme` |
+| `part_of`  | `range`  += `Hardware` |
+| `funds`    | `range`  += `Organisation` |
+
+All other domain/range violations observed in the M0 corpus are **deliberately
+left as violations**, to be surfaced as warnings by the validator (YES-7) rather
+than legislated away.
+
+**Why:** A domain/range check over the three committed `output/*.json` files
+(628 relations, current ontology) flagged 70 violations — 11.1%. Of those, 42
+are cases where the extraction is plainly right and the ontology was plainly too
+narrow: a programme *does* deliver hardware ("Project NYX delivers armed
+autonomous drones", ×21), a subsystem *is* part of a platform ("APKWS part_of
+Typhoon", ×7), a government *does* fund an agency ("UK Government funds DSTL",
+×7). Declaring those invalid would generate persistent noise against correct
+output and train the reader to ignore the warning channel.
+
+The remaining 28 are held as violations on purpose, because each is a real
+quality signal rather than an ontology gap:
+- `implements_standard` from `Organisation` (×4) is really flagging that
+  treaties (Polaris Sales Agreement, Northwood Declaration) are being mistyped
+  as `Standard` — an entity-typing problem, not a relation-scope one.
+- `range: Term` on `develops`/`delivers`/`funds` (×8) is extraction slop
+  ("develops → processes"), and several such cases should resolve to
+  `Capability` under v2's type set.
+- `part_of` with a `Term` domain (×7) is the Set-C over-granularity the M0
+  review explicitly declined to accommodate.
+
+**Evidence caveat:** only the FADS output (43 of 1,548 entities) post-dates
+ontology v2; the two policy PDFs were extracted before `Capability`, `Location`
+and `Role` existed. This mainly inflates the `range: Term` buckets, which are
+*not* being widened, so it does not undercut the four changes. The clean v2/v3
+baseline comes from the YES-12 re-extraction.
+
+**Alternatives considered:** widen everything to silence all 70 — rejected, it
+discards the signal the validator exists to produce and would bless genuine
+mistyping; hold all four and accept 11% standing warnings — rejected, warning
+channels that are mostly false positives stop being read; defer the whole call
+until after YES-12 re-extracts under v2 — rejected, the four changes are
+orthogonal to the v2 type additions (they concern `Programme` domains and
+`Hardware`/`Organisation` ranges, not the `Term`→`Capability` shift), so the
+extra round trip buys nothing.
+
+---
+
 ### Project managed with uv, pinned to Python 3.13
 **Decision:** The project uses **uv** for Python, virtualenv and dependency
 management. Python is pinned to **3.13** via `.python-version`; `uv.lock` is

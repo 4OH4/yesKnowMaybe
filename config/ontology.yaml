@@ -8,7 +8,7 @@
 # proposals), but nothing here changes without explicit human approval.
 # Bump `version` whenever a type is added, removed or materially redefined.
 
-version: 2
+version: 3
 
 # Types the extraction LLM should populate. `examples` steer extraction and
 # disambiguation; they are illustrative, not an enum.
@@ -99,21 +99,26 @@ entity_types:
 # resolution, mentions) rather than freely emitted as domain facts.
 relation_types:
   - name: develops
-    description: An organisation develops a programme, capability or piece of hardware.
-    domain: [Organisation]
+    description: >-
+      An organisation or programme develops a programme, capability or piece
+      of hardware.
+    domain: [Organisation, Programme]
     range: [Programme, Hardware, Capability]
 
   - name: delivers
-    description: An organisation delivers a programme, capability or piece of hardware.
-    domain: [Organisation]
+    description: >-
+      An organisation or programme delivers a programme, capability or piece
+      of hardware.
+    domain: [Organisation, Programme]
     range: [Programme, Hardware, Capability]
 
   - name: part_of
     description: >-
       One entity is part of a larger one — a programme within a programme, a
-      hardware subsystem, or an organisation within a larger organisation.
+      hardware subsystem within a larger platform, or an organisation within a
+      larger organisation.
     domain: [Programme, Hardware, Organisation]
-    range: [Programme, Organisation]
+    range: [Programme, Organisation, Hardware]
 
   - name: implements_standard
     description: A piece of hardware or programme implements a standard.
@@ -121,9 +126,11 @@ relation_types:
     range: [Standard]
 
   - name: funds
-    description: An organisation (e.g. a government body) or programme funds a programme, capability or hardware.
+    description: >-
+      An organisation (e.g. a government body) or programme funds a programme,
+      capability, piece of hardware, or another organisation.
     domain: [Organisation, Programme]
-    range: [Programme, Hardware, Capability]
+    range: [Programme, Hardware, Capability, Organisation]
 
   - name: invests_in
     description: An organisation or programme directs investment towards a programme or capability.
