@@ -48,11 +48,21 @@ _RETRYABLE_CODES = {429, 503}
 
 
 class GeminiExtractor:
-    def __init__(self, project: str | None, location: str, model: str, temperature: float = 0.0):
+    def __init__(
+        self,
+        project: str | None,
+        location: str,
+        model: str,
+        temperature: float = 0.0,
+        retry_backoff: tuple[int, ...] = _RETRY_BACKOFF,
+    ):
         self.project = project
         self.location = location
         self.model = model
         self.temperature = temperature
+        # Empty schedule => a single attempt, no backoff (fire requests straight
+        # through so raw API behaviour, including 429s, is observable).
+        self.retry_backoff = retry_backoff
         self._client = None
 
     def _get_client(self):
@@ -87,7 +97,7 @@ class GeminiExtractor:
     def _generate_with_retry(self, client, contents, config):
         from google.genai import errors
 
-        for attempt, wait in enumerate((*_RETRY_BACKOFF, None)):
+        for attempt, wait in enumerate((*self.retry_backoff, None)):
             try:
                 return client.models.generate_content(
                     model=self.model, contents=contents, config=config

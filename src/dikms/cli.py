@@ -50,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
     p_extract.add_argument("--ontology", default=DEFAULT_ONTOLOGY)
     p_extract.add_argument("--config", default=DEFAULT_CONFIG)
     p_extract.add_argument("--output", default=DEFAULT_OUTPUT)
+    p_extract.add_argument(
+        "--no-retry",
+        action="store_true",
+        help="fire requests straight through with no 429/503 backoff (observe raw API traffic)",
+    )
 
     args = parser.parse_args(argv)
     sources = load_sources(args.sources)
@@ -112,6 +117,7 @@ def _cmd_extract(args, sources) -> int:
     # Imports deferred so `parse`/`chunk` do not require google-genai.
     from .config import ExtractionConfig
     from .extraction import GeminiExtractor, extract_document
+    from .extraction.client import _RETRY_BACKOFF
     from .ontology import Ontology
     from .output import write_json, write_review_markdown
 
@@ -124,6 +130,7 @@ def _cmd_extract(args, sources) -> int:
         location=config.location,
         model=config.model,
         temperature=config.temperature,
+        retry_backoff=() if args.no_retry else _RETRY_BACKOFF,
     )
     doc = extract_document(
         parsed, ontology, extractor,
