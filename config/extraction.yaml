@@ -5,7 +5,7 @@
 # and project config need not be duplicated here. See SETUP.md.
 
 vertex:
-  project: ""            # e.g. "my-gcp-project"; or set GOOGLE_CLOUD_PROJECT
+  project: "yesknowmaybe"
   location: "europe-west2"
 
 extraction:
