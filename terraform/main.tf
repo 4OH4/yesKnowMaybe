@@ -1,9 +1,14 @@
-# Minimal, provisional IaC for the M0 extraction pipeline.
+# IaC for the DIKMS pipeline (DECISIONS.md: infrastructure-as-code).
 #
-# Scope deliberately small: enable the Vertex AI API on an existing project so
-# extraction can run. Storage (Spanner Graph or alternative) is an M1 decision
-# and is intentionally NOT provisioned here yet. Expand as later milestones
-# land concrete infrastructure (DECISIONS.md: infrastructure-as-code).
+# Covers: the APIs the pipeline needs (Vertex AI, Spanner), the Spanner Graph
+# knowledge store (M1 canonical backend — see spanner.tf), and a pipeline
+# service account with ADC-impersonation access so unattended runs need no
+# downloaded key (see iam.tf). The embedded Kùzu backend needs no cloud
+# resources and is not represented here. Application/graph schema (DDL) is owned
+# by the storage adapter's migrations, not Terraform.
+#
+# NOTE: writing this IaC is agent-automatable; running `terraform apply` creates
+# billable resources and handles credentials — that stays a human step (SETUP.md).
 
 terraform {
   required_version = ">= 1.5"
@@ -20,8 +25,14 @@ provider "google" {
   region  = var.region
 }
 
-# APIs the M0 pipeline needs. Vertex AI serves Gemini extraction.
+# APIs the pipeline needs. Vertex AI serves Gemini extraction + embeddings;
+# Spanner serves the knowledge store.
 resource "google_project_service" "vertex_ai" {
   service            = "aiplatform.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "spanner" {
+  service            = "spanner.googleapis.com"
   disable_on_destroy = false
 }

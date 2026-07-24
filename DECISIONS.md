@@ -6,6 +6,66 @@ was decided, why, and what alternatives were considered.
 
 ---
 
+### Knowledge store: Spanner Graph is the canonical target, behind a thin storage-adapter interface with Kùzu as an embedded backend
+**Decision:** Lock the M1 storage direction as **Spanner Graph** (native GQL,
+integrated vector search, GraphRAG-ready) as the canonical/production target,
+but build all ingestion, provenance-write, and query code against a **thin
+storage-adapter interface** — not against Spanner APIs directly. **Kùzu**
+(embedded, Cypher, native vector index, zero running infrastructure) is a
+first-class backend behind that same interface. The adapter surface is the
+minimum the architecture actually needs: node/edge upsert with arbitrary edge
+properties (confidence, source, timestamp), multi-hop traversal, and vector
+similarity over the same data. `same_as` is stored as pairwise edges in both
+backends — never a merged group id — per the transitivity decision below.
+**Why:** Spanner keeps the store consistent with the Vertex extraction platform
+and is the right long-term home, but it bills continuously with no
+scale-to-zero and forces a human provisioning + service-account checkpoint into
+every session — which fights the unattended-automation model in `AUTOMATION.md`.
+An adapter with an embedded Kùzu backend lets background sessions build schema,
+write real data, run trace-back queries, and pass tests with no credentials and
+no provisioned instance, while the Spanner backend is exercised when credentials
+are present. The adapter is cheap insurance regardless: at low-thousands scale
+the store is not the hard part, and not hard-coupling to one vendor keeps the
+Spanner cost/lock-in question reversible.
+**Alternatives considered:**
+- Spanner Graph only (as previously documented) — rejected: sole reliance forces
+  a human checkpoint into automated M1 and pays for an idle distributed DB at a
+  non-distributed scale.
+- Embedded store only (Kùzu / Postgres+pgvector+AGE) — rejected as the *sole*
+  target: gives up the GCP consistency and the intended production home; kept as
+  a backend, not the destination.
+**Consequence:** M1's first task becomes *define the adapter interface*, then
+implement the Kùzu backend (unattended-buildable) and the Spanner backend behind
+it. Schema must be expressible in both (property graph + vector column);
+anything that only works in one backend is a design smell to flag. Provisioning
+the Spanner instance and its credentials remains a manual human step (per
+`SETUP.md`), not an automated story.
+**HITL note:** owner-approved at the M1 kickoff decision point.
+
+---
+
+### Embeddings: Vertex embeddings for the vector channel and entity resolution
+**Decision:** The vector channel (M1 storage) and entity-resolution shortlisting
+(M2) run on **Vertex embeddings** (`gemini-embedding`-class model via Vertex
+AI), consistent with the Gemini/Vertex extraction platform. The exact model and
+output dimensionality are a sub-decision to pin before schema is frozen (the
+store's vector column width depends on it) — default to a single fixed dimension
+across the corpus and record it in `config/extraction.yaml` alongside the
+extraction model.
+**Why:** Keeps the pipeline on one model provider/platform rather than mixing in
+a local embedding stack, and gives higher-quality vectors for resolution than a
+small local model. Per-call cost is negligible at this corpus scale (consistent
+with the M0 extraction cost finding).
+**Trade-off accepted:** embeddings need the same Vertex credentials as
+extraction, so the entity-resolution loop is not fully runnable in a
+credential-free unattended session — acceptable, since resolution is M2 and the
+adapter's Kùzu backend still lets M1 storage/query be built and tested
+unattended with stub or cached vectors.
+**Deferred:** exact model + output dimension (768 vs larger); revisit only if
+resolution quality or storage cost makes the default wrong.
+
+---
+
 ### Ontology v2: capability/location/role added, governance + investment relations; named individuals out of scope
 **Decision:** From the M0 review (see `notes/M0-review.md`), ontology bumped to
 version 2:

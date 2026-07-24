@@ -42,12 +42,14 @@ dedup, progress logging, and a Vertex quota increase — see `BACKLOG.md`.
 
 ## M1 — Traceability, span alignment, and storage
 
-**To start:** lock the storage choice (Spanner Graph vs alternative) — still
-flagged open in `DECISIONS.md` — before building any schema against it. This is
-the first M1 decision, not something to settle silently mid-build.
+**Storage choice locked** (see `DECISIONS.md`): Spanner Graph is the canonical
+target, built behind a thin storage-adapter interface with Kùzu as an embedded
+backend. The first M1 task is therefore to define that adapter interface, then
+implement the Kùzu backend (unattended-buildable, no credentials) and the
+Spanner backend behind it — not to build schema against Spanner APIs directly.
 
-Get extracted entities/relations into a real graph + vector store (Spanner
-Graph or alternative, per `DECISIONS.md`) with document/section-level
+Get extracted entities/relations into a real graph + vector store (via the
+storage adapter — Kùzu embedded and Spanner Graph, per `DECISIONS.md`) with document/section-level
 provenance attached from the moment of extraction, plus the post-hoc span
 alignment step (matching extraction-returned quotes against source text to
 derive verified offsets where possible — see `ARCHITECTURE.md`). No

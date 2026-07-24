@@ -19,8 +19,14 @@ governance + investment relations; named individuals out of scope).
 - [done] Capture manual review notes as the seed of the eval set (`notes/M0-review.md`)
 
 ## M1
-Storage, provenance-at-write, and span alignment. Core:
-- **Lock the storage choice first** — confirm Spanner Graph or an alternative (open in `DECISIONS.md`) before building any schema; don't build against an unconfirmed store
+Storage, provenance-at-write, and span alignment. Storage direction is now
+locked (see `DECISIONS.md`): Spanner Graph is the canonical target, built behind
+a thin storage-adapter interface with Kùzu as an embedded, unattended-buildable
+backend. Core:
+- **Define the storage-adapter interface first** — node/edge upsert with arbitrary edge properties, multi-hop traversal, vector similarity; schema must be expressible in both backends. Build against the interface, never Spanner APIs directly
+- Implement the **Kùzu backend** (embedded, no credentials) so M1 storage/query is buildable and testable unattended
+- Implement the **Spanner Graph backend** behind the same interface (exercised when Vertex/Spanner credentials are present; instance provisioning is a manual human step, not an automated story)
+- Pin the **Vertex embedding model + output dimension** before freezing schema (the vector column width depends on it); record it in `config/extraction.yaml`
 - Define storage schema for entities/relations including mandatory document/section provenance fields and optional exact-span fields (model the pipeline's Provenance/AlignmentStatus already in `dikms.models`)
 - Build post-hoc span alignment step: match extraction-returned quotes against source text to derive verified offsets; mark unaligned facts explicitly (AlignmentStatus) rather than dropping or faking a span
 - Write ingestion code: extraction output → store, with provenance attached at write time

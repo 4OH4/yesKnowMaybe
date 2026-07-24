@@ -12,6 +12,7 @@ venv/
 
 # Local environment / secrets — never commit credentials
 .env
+terraform/terraform.tfvars
 *.key
 *.json.key
 application_default_credentials.json
@@ -20,6 +21,10 @@ application_default_credentials.json
 # The manifest (data/sources.yaml) IS tracked; the downloaded documents are not.
 data/corpus/
 output/
+
+# Embedded Kùzu knowledge store (storage adapter's local backend)
+data/graph.kuzu/
+*.kuzu
 
 # Terraform local state
 terraform/.terraform/

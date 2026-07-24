@@ -1,3 +1,12 @@
 # Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
 project = "your-gcp-project-id"
 region  = "europe-west2"
+
+# Principal allowed to impersonate the pipeline service account (ADC, no key).
+# Leave blank to skip. Example:
+# impersonating_principal = "user:you@example.com"
+impersonating_principal = ""
+
+# Spanner sizing/teardown (defaults are fine to start):
+# spanner_processing_units    = 100    # billable minimum; no scale-to-zero
+# spanner_deletion_protection = false  # allow teardown for cost control
