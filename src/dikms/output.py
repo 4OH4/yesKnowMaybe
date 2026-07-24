@@ -22,6 +22,7 @@ def document_to_dict(doc: DocumentExtraction) -> dict:
         "source_id": doc.source_id,
         "parse_id": doc.parse_id,
         "warnings": doc.warnings,
+        "failed_chunks": [{"chunk_id": cid, "error": err} for cid, err in doc.failed_chunks],
         "entities": [asdict(e) for e in doc.all_entities()],
         "relations": [asdict(r) for r in doc.all_relations()],
         "proposals": [asdict(p) for p in doc.all_proposals()],

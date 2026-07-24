@@ -26,6 +26,9 @@ class DocumentExtraction:
     parse_id: str
     chunks: list[ChunkExtraction] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # (chunk_id, error) for chunks that could not be extracted. Recorded, not
+    # silently dropped, so partial output is honest about what is missing.
+    failed_chunks: list[tuple[str, str]] = field(default_factory=list)
 
     def all_entities(self) -> list[ExtractedEntity]:
         return [e for c in self.chunks for e in c.entities]
@@ -50,7 +53,13 @@ def extract_document(
     relation_names = ontology.relation_names()
 
     for chunk in chunks:
-        result = extractor.extract(ontology, chunk)
+        try:
+            result = extractor.extract(ontology, chunk)
+        except Exception as exc:  # noqa: BLE001 — isolate one chunk's failure
+            # Persist progress on the other chunks rather than losing the whole
+            # document to one transient failure (e.g. quota exhaustion).
+            doc.failed_chunks.append((chunk.chunk_id, f"{type(exc).__name__}: {exc}"))
+            continue
         doc.chunks.append(result)
         doc.warnings.extend(
             _validate(result, chunk.chunk_id, entity_names, relation_names)

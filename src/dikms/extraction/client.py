@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 
 from ..models import (
     Chunk,
@@ -36,6 +37,14 @@ class ExtractionResponseError(RuntimeError):
     def __init__(self, message: str, raw: str) -> None:
         super().__init__(message)
         self.raw = raw
+
+
+# Backoff schedule (seconds) for transient RESOURCE_EXHAUSTED (429) / 503
+# responses. New GCP projects have low default Gemini quotas, so a long
+# document routinely trips per-minute limits; backing off spaces requests out
+# rather than failing the run.
+_RETRY_BACKOFF = (5, 15, 30, 60, 60)
+_RETRYABLE_CODES = {429, 503}
 
 
 class GeminiExtractor:
@@ -65,17 +74,30 @@ class GeminiExtractor:
         from google.genai import types
 
         client = self._get_client()
-        response = client.models.generate_content(
-            model=self.model,
-            contents=build_user_prompt(ontology, chunk),
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
-                temperature=self.temperature,
-                response_mime_type="application/json",
-            ),
+        config = types.GenerateContentConfig(
+            system_instruction=SYSTEM_INSTRUCTION,
+            temperature=self.temperature,
+            response_mime_type="application/json",
         )
+        contents = build_user_prompt(ontology, chunk)
+        response = self._generate_with_retry(client, contents, config)
         raw = response.text or ""
         return parse_response(raw, chunk, self.model)
+
+    def _generate_with_retry(self, client, contents, config):
+        from google.genai import errors
+
+        for attempt, wait in enumerate((*_RETRY_BACKOFF, None)):
+            try:
+                return client.models.generate_content(
+                    model=self.model, contents=contents, config=config
+                )
+            except errors.APIError as exc:
+                # Retry only transient quota/availability codes; re-raise the
+                # rest (bad request, auth, etc.) immediately.
+                if getattr(exc, "code", None) not in _RETRYABLE_CODES or wait is None:
+                    raise
+                time.sleep(wait)
 
 
 def parse_response(raw: str, chunk: Chunk, model: str) -> ChunkExtraction:
