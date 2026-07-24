@@ -100,11 +100,21 @@ policy PDFs.
 - **Open:** add domain/range validation (see `part_of` overload above).
 - **Open:** proposal dedup/aggregation before review.
 
-## Open decisions for the owner
+## Decisions taken (ontology v2 — see DECISIONS.md)
 
-1. Approve set **A** for the next ontology revision (version 2)?
-2. Scope calls on set **B**: are `Person`/`Role` in scope? One `Location` type or
-   several? Which procurement relations make the cut?
-3. Confirm set **C** is rejected and handled via prompt guidance, not new types.
-4. Engineering priorities: quota increase, domain/range validation, proposal
-   dedup, progress logging — which before M1?
+1. **Set A adopted** — `Capability` entity; `governs`, `member_of`,
+   `invests_in`, `supports` relations; `part_of`/`develops`/`delivers`/`funds`
+   extended. Ontology bumped to version 2.
+2. **Set B calls:** `Role` adopted, **`Person` rejected** — named individuals
+   are out of scope and never extracted/stored (enforced in the prompt).
+   `Location` adopted as a single type (not Facility/Infrastructure/Site).
+   Procurement relations deferred.
+3. **Set C rejected** — steered to existing broad types via prompt guidance, no
+   new entity types.
+4. **Engineering — still open for M1:** Vertex quota increase, domain/range
+   validation, proposal dedup, per-chunk progress logging.
+
+Validation: re-running the FADS article under v2 gave 0 proposals (was 1 under
+v1, before which the gap surfaced as a GovernmentBody proposal); `Capability`
+now captures "Maritime Integrated Air and Missile Defence and Strike" correctly;
+`Role` captured a post ("Senior Responsible Owner"), no named person.
