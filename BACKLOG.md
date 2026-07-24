@@ -5,14 +5,14 @@ with Claude Code when actually briefing a piece of work; don't treat these
 as specs.
 
 ## M0
-- Draft initial ontology (entity types, relation types, including Tender) as a config file, not hardcoded
-- Pick and hand-select the small real document set for the extraction PoC (Defence Investment Plan + a few press releases + one company site)
-- Build PDF parsing (text + section/page structure) and HTML main-content extraction
-- Build structure-respecting chunking, retaining chunk position relative to the parsed document
-- Pick extraction model (default: Gemini via Vertex AI, Pro vs Flash decided against M0 output), sanity-check rough cost against expected document volume
-- Write the extraction prompt/pipeline, constrained to the ontology config, returning supporting quotes not claimed offsets
-- Manually review raw extraction output against the source documents; note failure patterns
-- Capture manual review notes/labels as the seed of the eval set (don't discard at M0 end)
+- [done] Draft initial ontology (entity types, relation types, including Tender) as a config file, not hardcoded
+- [partly done] Pick and hand-select the small real document set — 3 chosen (data/sources.yaml); the MOD Digital Strategy URL 404s and needs a working replacement
+- [done] Build PDF parsing (text + section/page structure) and HTML main-content extraction — validated on the real DIP (text-native, 81pp) and Naval News article
+- [done] Build structure-respecting chunking, retaining chunk position relative to the parsed document
+- [done] Pick extraction model (default: Gemini via Vertex AI, Pro vs Flash decided against M0 output) — cost sanity-check still pending a real run
+- [done] Write the extraction prompt/pipeline, constrained to the ontology config, returning supporting quotes not claimed offsets — built; not yet run (needs GCP/Vertex, see SETUP.md)
+- [blocked: needs GCP] Manually review raw extraction output against the source documents; note failure patterns
+- [pending] Capture manual review notes/labels as the seed of the eval set (don't discard at M0 end)
 
 ## M1
 - Stand up chosen graph + vector store (Spanner Graph, or whatever's decided in DECISIONS.md by this point)

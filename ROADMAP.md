@@ -20,6 +20,12 @@ No review queue UI yet — inspect raw output directly.
 entities and relations on real, messily-parsed and chunked material, before
 anything else is built around it.
 
+**Status (2026-07-24):** pipeline scaffold built and the parse/chunk stages
+validated on the real corpus (`dikms parse`/`chunk`). Remaining before M0 can
+exit: (1) GCP/Vertex set up so `dikms extract` can run (see SETUP.md), (2) run
+extraction and do the manual review, (3) capture that review as the eval seed,
+(4) replace the broken MOD Digital Strategy source URL.
+
 **Exit criteria:**
 - Extraction output reviewed manually and judged usable — i.e. review
   would plausibly be faster than doing the work by hand.

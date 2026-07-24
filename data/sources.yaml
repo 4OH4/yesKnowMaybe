@@ -15,9 +15,10 @@ sources:
     format: pdf
     authoritativeness: high
     authoritativeness_basis: "rule: publishing.service.gov.uk (UK government)"
-    # Text-native assumption to be confirmed at parse time; scanned PDFs are
-    # out of scope for v1 (ARCHITECTURE.md).
-    notes: "Government strategy PDF; text-native assumed."
+    # WARNING: this URL returns HTTP 404 (checked 2026-07-24). Needs a working
+    # replacement URL before it can be ingested — left in place, not guessed.
+    status: url-broken
+    notes: "Government strategy PDF; URL 404s, replacement needed. Text-native assumed once fetchable."
 
   - id: defence-investment-plan
     title: "The Defence Investment Plan"
