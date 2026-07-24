@@ -8,20 +8,39 @@
 # proposals), but nothing here changes without explicit human approval.
 # Bump `version` whenever a type is added, removed or materially redefined.
 
-version: 0
+version: 1
 
 # Types the extraction LLM should populate. `examples` steer extraction and
 # disambiguation; they are illustrative, not an enum.
+#
+# An entity type may declare `attributes`: named properties the extractor
+# should populate where the text supports them. An attribute with `values`
+# is a controlled vocabulary (the extractor must pick one); without, it is
+# free text with the description as guidance. Attributes are omitted when not
+# evidenced — they are not mandatory. (Attribute-level provenance is not
+# modelled yet; an entity carries a single provenance for now — revisit if
+# per-attribute sourcing proves necessary.)
 entity_types:
   - name: Programme
     description: >-
       A named defence programme, project, or initiative.
     examples: [Sense-Decide-Effect, Digital Targeting Web, ASGARD, FADS]
 
-  - name: Company
+  - name: Organisation
     description: >-
-      A commercial entity — prime contractor, SME, or any supplier.
-    examples: [BAE Systems, Leonardo, a named SME]
+      Any organisation — governmental or non-governmental — including
+      companies, government departments, military commands, agencies,
+      academic institutions and multinational bodies. Distinguish the kind
+      via the `org_type` attribute rather than separate entity types.
+    examples: [BAE Systems, Ministry of Defence, Royal Navy, NATO, Leonardo]
+    attributes:
+      - name: org_type
+        description: The kind of organisation.
+        values: [government, military, commercial, academic, ngo, multinational, other]
+      - name: nationality
+        description: >-
+          Controlling nation (e.g. UK, USA, France) or "multinational" for
+          bodies like NATO. Omit where global or not meaningful.
 
   - name: Hardware
     description: >-
@@ -60,13 +79,13 @@ entity_types:
 # resolution, mentions) rather than freely emitted as domain facts.
 relation_types:
   - name: develops
-    description: A company develops a programme or piece of hardware.
-    domain: [Company]
+    description: An organisation develops a programme or piece of hardware.
+    domain: [Organisation]
     range: [Programme, Hardware]
 
   - name: delivers
-    description: A company delivers a programme or piece of hardware.
-    domain: [Company]
+    description: An organisation delivers a programme or piece of hardware.
+    domain: [Organisation]
     range: [Programme, Hardware]
 
   - name: part_of
@@ -80,8 +99,8 @@ relation_types:
     range: [Standard]
 
   - name: funds
-    description: A programme or government body funds a programme.
-    domain: [Programme, Company]
+    description: An organisation (e.g. a government body) or programme funds a programme.
+    domain: [Organisation, Programme]
     range: [Programme]
 
   - name: extracted_from

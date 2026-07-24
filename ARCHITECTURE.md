@@ -52,7 +52,14 @@ via human-in-the-loop approval (see Decision: Ontology growth gating).
 extraction is run):**
 
 - `Programme` — e.g. Sense-Decide-Effect, Digital Targeting Web, ASGARD
-- `Company` — primes, SMEs, any commercial entity
+- `Organisation` — any organisation, governmental or non-governmental
+  (companies, government departments, military commands, agencies, academic
+  institutions, multinational bodies). The kind is an `org_type` attribute
+  (government/military/commercial/academic/ngo/multinational/other), with a
+  `nationality` attribute where not global — rather than a separate entity
+  type per kind. Supersedes the original `Company` type after M0 review
+  showed the ontology had no home for government/military bodies (see
+  `DECISIONS.md`).
 - `Hardware` — e.g. Ajax, F-35, specific radar systems
 - `Standard` — e.g. Cursor on Target, Link 16, Sapient
 - `Source` — a document or web page; retained as a first-class node, not
@@ -71,10 +78,11 @@ extraction is run):**
 
 **Initial relation types:**
 
-- `develops` / `delivers` (Company → Programme, Company → Hardware)
+- `develops` / `delivers` (Organisation → Programme, Organisation → Hardware)
 - `part_of` (Programme → Programme, Hardware → Programme)
 - `implements_standard` (Hardware/Programme → Standard)
-- `funds` (Programme → Programme, government body → Programme)
+- `funds` (Organisation → Programme, Programme → Programme) — a government
+  body funding a programme is now an `Organisation` source, not a special case
 - `extracted_from` (any entity/relation → Source) — the provenance edge,
   mandatory on every extraction
 - `same_as` — confidence-weighted, see Entity Resolution below

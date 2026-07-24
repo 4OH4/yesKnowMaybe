@@ -30,7 +30,10 @@ text copied VERBATIM from the provided chunk that supports the item. Copy it \
 exactly, character for character. Never paraphrase the quote and never invent \
 character positions or offsets.
 4. Extract only what the text supports. Do not add outside knowledge.
-5. Respond with a single JSON object and nothing else.
+5. Populate an entity's declared `attributes` where the text supports them, \
+choosing from the controlled vocabulary when one is listed; omit any attribute \
+you cannot ground in the text.
+6. Respond with a single JSON object and nothing else.
 """
 
 _SCHEMA = """\

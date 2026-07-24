@@ -6,6 +6,35 @@ was decided, why, and what alternatives were considered.
 
 ---
 
+### `Organisation` replaces `Company`; kind and nationality are attributes
+**Decision:** Merge `Company` into a broader `Organisation` entity type
+covering governmental and non-governmental bodies alike (companies,
+departments, military commands, agencies, academic institutions,
+multinational bodies). The kind is a controlled-vocabulary `org_type`
+attribute (government/military/commercial/academic/ngo/multinational/other),
+with a free-text `nationality` attribute (controlling nation, or
+"multinational", omitted when global). Ontology bumped to version 1.
+**Why:** The first real M0 extraction run (Naval News/FADS) proposed exactly
+this: "Royal Navy", "Navy Command", "UK Strategic Command" fit neither
+`Company` nor `Programme`. It also exposed a pre-existing inconsistency — the
+`funds` relation already referenced a "government body" source with no such
+entity type to originate from. One umbrella type with a typed attribute is
+cleaner than parallel `Company`/`GovernmentBody`/... types, which would
+reintroduce the entity-type ambiguity the model was tripping over.
+**Alternatives considered:**
+- Add `GovernmentBody` alongside `Company` (as the model first proposed) —
+  rejected: two overlapping org types invites mistyping and multiplies as
+  new org kinds appear (academic, NGO, multinational).
+- Sub-types as distinct entity types — rejected for the same reason; an
+  attribute keeps one node type and lets `org_type` be filtered at query time.
+**HITL note:** approved by the owner (constraint 3). No data migration —
+nothing is stored yet (pre-M1). `funds`/`develops`/`delivers` domains updated
+from `Company` to `Organisation`.
+**Deferred:** attribute-level provenance (an entity carries one provenance
+for now); revisit if per-attribute sourcing is needed.
+
+---
+
 ### Config and hand-authored data files are YAML
 **Decision:** Human-authored configuration and data — the ontology, the
 source manifest, extraction/pipeline config — are YAML. This settles the

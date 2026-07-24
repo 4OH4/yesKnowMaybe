@@ -16,11 +16,19 @@ import yaml
 
 
 @dataclass
+class Attribute:
+    name: str
+    description: str
+    values: list[str] = field(default_factory=list)  # controlled vocab, or empty for free text
+
+
+@dataclass
 class EntityType:
     name: str
     description: str
     examples: list[str] = field(default_factory=list)
     system_managed: bool = False
+    attributes: list[Attribute] = field(default_factory=list)
 
 
 @dataclass
@@ -47,6 +55,14 @@ class Ontology:
                 description=e.get("description", "").strip(),
                 examples=e.get("examples", []),
                 system_managed=e.get("system_managed", False),
+                attributes=[
+                    Attribute(
+                        name=a["name"],
+                        description=a.get("description", "").strip(),
+                        values=a.get("values", []),
+                    )
+                    for a in e.get("attributes", [])
+                ],
             )
             for e in data.get("entity_types", [])
         ]
@@ -80,6 +96,9 @@ class Ontology:
         for e in self.extractable_entities():
             ex = f" e.g. {', '.join(e.examples)}" if e.examples else ""
             lines.append(f"- {e.name}: {e.description}{ex}")
+            for a in e.attributes:
+                vocab = f" (one of: {', '.join(a.values)})" if a.values else ""
+                lines.append(f"    · attribute {a.name}{vocab}: {a.description}")
         lines += ["", "Relation types (source_type -> target_type):"]
         for r in self.extractable_relations():
             dom = "/".join(r.domain) or "*"
