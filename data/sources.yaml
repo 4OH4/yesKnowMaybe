@@ -1,0 +1,42 @@
+# M0 hand-picked source corpus (see BACKLOG.md M0, ROADMAP.md M0).
+#
+# Authoritativeness follows the rule-based default in DECISIONS.md:
+#   known institutional / .gov.uk -> high
+#   established company / trade site -> medium
+#   otherwise -> low
+# It is manually overridable; where the rule default is being overridden or
+# is debatable, that is noted explicitly rather than applied silently.
+
+sources:
+  - id: mod-digital-strategy-2021
+    title: "Digital Strategy for Defence: Delivering the Digital Backbone"
+    publisher: Ministry of Defence
+    url: "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/990114/20210421_-MOD_Digital_Strategy-Update-_Final.pdf"
+    format: pdf
+    authoritativeness: high
+    authoritativeness_basis: "rule: publishing.service.gov.uk (UK government)"
+    # Text-native assumption to be confirmed at parse time; scanned PDFs are
+    # out of scope for v1 (ARCHITECTURE.md).
+    notes: "Government strategy PDF; text-native assumed."
+
+  - id: defence-investment-plan
+    title: "The Defence Investment Plan"
+    publisher: HM Government
+    url: "https://assets.publishing.service.gov.uk/media/6a44e989167a99cf0018da38/The_Defence_Investment_Plan.pdf"
+    format: pdf
+    authoritativeness: high
+    authoritativeness_basis: "rule: publishing.service.gov.uk (UK government)"
+    # Large, heavily-designed government PDF named as a primary M0 input in
+    # ARCHITECTURE.md; worth an early spot-check for image-only pages.
+    notes: "Large structured government PDF; text-native to be confirmed."
+
+  - id: navalnews-fads-type83-2025
+    title: "Royal Navy details ambitions for FADS programme, Type 83 destroyer"
+    publisher: Naval News
+    url: "https://www.navalnews.com/event-news/cne-2025/2025/06/royal-navy-details-ambitions-for-fads-programme-type-83-destroyer/"
+    format: html
+    authoritativeness: low
+    # Rule default is low (no institutional/company match). Candidate manual
+    # override to medium: established specialist defence trade press.
+    authoritativeness_basis: "rule default; override-to-medium candidate (specialist trade press)"
+    notes: "Exercises the HTML main-content extraction path in the M0 set."

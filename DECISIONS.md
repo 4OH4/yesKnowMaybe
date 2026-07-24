@@ -6,6 +6,21 @@ was decided, why, and what alternatives were considered.
 
 ---
 
+### Config and hand-authored data files are YAML
+**Decision:** Human-authored configuration and data — the ontology, the
+source manifest, extraction/pipeline config — are YAML. This settles the
+format left provisional when the source manifest was first added as JSON.
+**Why:** These files are edited by hand and tuned repeatedly (see the
+config-over-hardcoding convention), so inline comments and low syntactic
+noise matter; JSON has neither. PyYAML is a single, well-established
+dependency, consistent with the light-dependency convention. Applies to
+config/data only — machine-to-machine interchange and stored pipeline
+output stay JSON (stdlib, no dependency, schema-stable).
+**Consequence:** the initial `data/sources.json` is migrated to
+`data/sources.yaml`.
+
+---
+
 ### Primary language is Python
 **Decision:** Python is the primary implementation language for the
 ingestion, extraction, and retrieval backend. Previously carried as an
