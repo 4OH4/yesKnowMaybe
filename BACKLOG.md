@@ -31,7 +31,7 @@ backend. Core:
 - Implement the **Spanner Graph backend** behind the same interface (exercised when Vertex/Spanner credentials are present; instance + service account provisioned via Terraform in `terraform/`, but running `apply` is a manual human step, not an automated story)
 - [done] **Vertex embedding model + dimension pinned** — `gemini-embedding-001` at full 3072 width, recorded in `config/extraction.yaml`; the store's vector column width follows this
 - Define storage schema for entities/relations including mandatory document/section provenance fields and optional exact-span fields (model the pipeline's Provenance/AlignmentStatus already in `dikms.models`)
-- Build post-hoc span alignment step: match extraction-returned quotes against source text to derive verified offsets; mark unaligned facts explicitly (AlignmentStatus) rather than dropping or faking a span
+- [done] **Build post-hoc span alignment step** — `dikms.alignment` + `dikms align`; rates recorded in `notes/M1-alignment.md` (HTML 100%, MOD 97.9%, DIP 96.5%)
 - Write ingestion code: extraction output → store, with provenance attached at write time
 - Manual query script to trace any stored fact back to its source, with and without a resolved span
 - Formalise the M0 eval set into something reusable for regression checks — must tolerate run-to-run non-determinism (temperature 0 still varied), not exact-match
@@ -42,6 +42,8 @@ Carried from the M0 review (hardening, do alongside M1):
 - De-duplicate/aggregate type proposals before review (they recur per chunk)
 - Add `--verbose` per-chunk progress logging for long runs (DIP is opaque for ~25 min)
 - Request a Vertex Gemini quota increase before larger runs (still outstanding — human step)
+- Require contiguous verbatim supporting quotes in the extraction prompt — stitched/elided quotes are the single largest cause of unresolved spans (see `notes/M1-alignment.md`)
+- Decide whether span ambiguity (quote matching N times in its chunk) is persisted on `Provenance` or stays a report-only signal — schema call for the ingestion work
 - [done] Service account for unattended runs — provisioned via Terraform (`terraform/iam.tf`) with ADC impersonation (no key file); replaces personal-user ADC once `impersonating_principal` is set
 
 ## M2

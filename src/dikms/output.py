@@ -6,6 +6,10 @@ Two forms:
 * Markdown — a human review sheet grouping entities/relations/proposals with
   their supporting quotes and provenance, which is what the M0 manual review
   reads and annotates to seed the eval set (DECISIONS.md: eval set timing).
+
+Reading back is dataclass reconstruction, not dict-poking: later stages
+(alignment, then ingestion) work on the same types the pipeline produced, so
+there is one representation of a fact in the codebase rather than two.
 """
 
 from __future__ import annotations
@@ -15,7 +19,15 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .extraction.pipeline import DocumentExtraction
-from .models import TypeProposal
+from .models import (
+    AlignmentStatus,
+    ChunkExtraction,
+    ExtractedEntity,
+    ExtractedRelation,
+    Provenance,
+    Span,
+    TypeProposal,
+)
 
 
 @dataclass
@@ -61,6 +73,128 @@ def write_json(doc: DocumentExtraction, path: str | Path) -> Path:
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(document_to_dict(doc), indent=2, ensure_ascii=False), encoding="utf-8")
     return p
+
+
+def _provenance_from_dict(d: dict) -> Provenance:
+    span = d.get("span")
+    return Provenance(
+        source_id=d["source_id"],
+        chunk_id=d["chunk_id"],
+        section_refs=list(d.get("section_refs") or []),
+        supporting_quote=d.get("supporting_quote", ""),
+        extraction_model=d.get("extraction_model", ""),
+        extracted_at=d["extracted_at"],
+        alignment_status=AlignmentStatus(d.get("alignment_status", "pending")),
+        span=Span(**span) if span else None,
+    )
+
+
+def _merge_chunk_order(sequences: list[list[str]]) -> list[str]:
+    """Merge per-list chunk sequences into one order consistent with all of them.
+
+    Each of the entity/relation/proposal lists is grouped by chunk in chunk
+    order, so each yields the true order *restricted to* the chunks it mentions.
+    Taking first-seen order from one list alone gets this wrong — a chunk that
+    produced only relations would sort after a later chunk that produced
+    entities, silently reordering facts on rewrite. Merging all three recovers
+    the original order.
+    """
+    seqs = [list(dict.fromkeys(s)) for s in sequences]
+    order: list[str] = []
+    while any(seqs):
+        for seq in seqs:
+            # Only take a head that no other sequence still expects later.
+            if not seq or any(seq[0] in other[1:] for other in seqs):
+                continue
+            head = seq[0]
+            break
+        else:
+            # Orderings contradict each other, so the file was not written by
+            # document_to_dict. Take any head: order is best-effort, but no
+            # fact is lost.
+            head = next(s[0] for s in seqs if s)
+        order.append(head)
+        for other in seqs:
+            if other and other[0] == head:
+                del other[0]
+    return order
+
+
+def document_from_dict(data: dict) -> DocumentExtraction:
+    """Rebuild a :class:`DocumentExtraction` from :func:`document_to_dict` output.
+
+    The JSON form flattens the per-chunk grouping, so it is rebuilt from each
+    item's ``provenance.chunk_id``. Chunk order is recovered by merging the
+    orderings implied by all three lists (see :func:`_merge_chunk_order`), which
+    makes write → read → write byte-stable.
+    """
+    doc = DocumentExtraction(
+        source_id=data["source_id"],
+        parse_id=data["parse_id"],
+        warnings=list(data.get("warnings") or []),
+        failed_chunks=[
+            (f["chunk_id"], f["error"]) for f in data.get("failed_chunks") or []
+        ],
+    )
+
+    doc.chunks.extend(
+        ChunkExtraction(chunk_id=cid)
+        for cid in _merge_chunk_order(
+            [
+                [item["provenance"]["chunk_id"] for item in data.get(key) or []]
+                for key in ("entities", "relations", "proposals")
+            ]
+        )
+    )
+    by_chunk = {c.chunk_id: c for c in doc.chunks}
+
+    def chunk_for(chunk_id: str) -> ChunkExtraction:
+        return by_chunk[chunk_id]
+
+    for e in data.get("entities") or []:
+        prov = _provenance_from_dict(e["provenance"])
+        chunk_for(prov.chunk_id).entities.append(
+            ExtractedEntity(
+                entity_type=e["entity_type"],
+                name=e["name"],
+                provenance=prov,
+                attributes=dict(e.get("attributes") or {}),
+            )
+        )
+    for r in data.get("relations") or []:
+        prov = _provenance_from_dict(r["provenance"])
+        chunk_for(prov.chunk_id).relations.append(
+            ExtractedRelation(
+                relation_type=r["relation_type"],
+                source_name=r["source_name"],
+                source_type=r["source_type"],
+                target_name=r["target_name"],
+                target_type=r["target_type"],
+                provenance=prov,
+            )
+        )
+    for pr in data.get("proposals") or []:
+        prov = _provenance_from_dict(pr["provenance"])
+        chunk_for(prov.chunk_id).proposals.append(
+            TypeProposal(
+                kind=pr["kind"],
+                name=pr["name"],
+                description=pr.get("description", ""),
+                justification=pr.get("justification", ""),
+                provenance=prov,
+            )
+        )
+    return doc
+
+
+def read_json(path: str | Path) -> DocumentExtraction:
+    """Load a previously-written extraction output file."""
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(
+            f"No extraction output at {p}. Run `dikms extract` first."
+        )
+    return document_from_dict(json.loads(p.read_text(encoding="utf-8")))
 
 
 def write_review_markdown(doc: DocumentExtraction, path: str | Path) -> Path:

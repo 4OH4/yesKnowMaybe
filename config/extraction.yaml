@@ -29,6 +29,33 @@ chunking:
   target_chars: 6000
   max_chars: 9000
 
+alignment:
+  # Post-hoc span alignment (ARCHITECTURE.md: span-level provenance). The quote
+  # is the input, the offset is derived — nothing here ever trusts a claimed
+  # offset. These are tuning parameters, expected to move once alignment rates
+  # across the real corpus are understood (see notes/M1-alignment.md).
+  #
+  # Floor for the bounded fuzzy stage: difflib SequenceMatcher ratio between the
+  # normalised source slice and the normalised quote. Below this the fact is
+  # UNRESOLVED — never a guessed span.
+  #
+  # Set from evidence, not taste (notes/M1-alignment.md): across the three M0
+  # documents every *correct* fuzzy match scores >= 0.953 (they are single
+  # whitespace/hyphen artefacts in an otherwise identical quote), while every
+  # *wrong* one scores <= 0.946 — those are quotes the model stitched from
+  # non-contiguous text, where a long shared prefix carries the ratio while the
+  # tail points at the wrong item. 0.95 separates the two cleanly and costs
+  # 0.6pp of raw alignment rate on the largest document.
+  min_ratio: 0.95
+  # Quotes shorter than this are never fuzzy-matched: over a handful of
+  # characters the ratio is too coarse to tell a near-miss from a different
+  # word ("Royal Navvy" scores 0.952 against "Royal Navy"). Short quotes still
+  # align via the exact/normalised stages. At the 0.95 floor this rail is
+  # currently inert on the M0 corpus — the ratio rejects those cases first — and
+  # is kept so that lowering min_ratio cannot start snapping short entity names
+  # onto near-neighbours.
+  min_fuzzy_chars: 12
+
 storage:
   # Which backend the storage adapter uses (DECISIONS.md: knowledge store).
   # Kùzu is embedded — no credentials, unattended-buildable — and is the default
