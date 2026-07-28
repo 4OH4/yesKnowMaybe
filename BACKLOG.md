@@ -44,6 +44,7 @@ Carried from the M0 review (hardening, do alongside M1):
 - Request a Vertex Gemini quota increase before larger runs (still outstanding — human step)
 - Require contiguous verbatim supporting quotes in the extraction prompt — stitched/elided quotes are the single largest cause of unresolved spans (see `notes/M1-alignment.md`)
 - Decide whether span ambiguity (quote matching N times in its chunk) is persisted on `Provenance` or stays a report-only signal — schema call for the ingestion work
+- Clear the ~30 pre-existing `ruff` failures (E501, unsorted imports, `str, Enum` → `StrEnum`) as one housekeeping commit — deliberately not batched into feature work, so nothing currently schedules it
 - [done] Service account for unattended runs — provisioned via Terraform (`terraform/iam.tf`) with ADC impersonation (no key file); replaces personal-user ADC once `impersonating_principal` is set
 
 ## M2

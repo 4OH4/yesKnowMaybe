@@ -21,15 +21,53 @@ By match method:
 | Source | exact | normalised | fuzzy |
 |---|---:|---:|---:|
 | `navalnews-fads-type83-2025` | 68 | 0 | 1 |
-| `mod-digital-strategy-2021` | 293 | 179 | 5 |
-| `defence-investment-plan` | 1100 | 559 | 15 |
+| `mod-digital-strategy-2021` | 293 | 182 | 2 |
+| `defence-investment-plan` | 1100 | 569 | 5 |
+
+Only **8 facts in the whole corpus** (0.4% of the 2,220 aligned) rest on the
+fuzzy tier; everything else matches character-identically after normalisation.
+All 8 were inspected individually and all 8 are correct.
 
 The HTML/PDF split predicted in the ticket shows up, but weakly and not for the
 predicted reason. PDF artefacts (line-break whitespace, `ﬁ`/`ﬃ` ligatures,
-hyphen-wrapped words, typographic quotes and dashes) account for the whole of
+hyphens at line breaks, typographic quotes and dashes) account for the whole of
 the exact→normalised shift — 38% of MOD facts and 32% of DIP facts need
 normalisation where the HTML page needs almost none — but they cause hardly any
 *failures*. Normalisation absorbs them.
+
+### Hyphens at line breaks: the expected artefact isn't the real one
+
+Worth recording because it inverts the obvious assumption. PDF text wraps at
+hyphens for two indistinguishable reasons: a compound breaking at its own hyphen
+(`dual-\nuse`), or a word hyphenated purely to wrap (`capa-\nbility`). The first
+implementation assumed the second and dropped the hyphen.
+
+Counting every such site in both PDFs: **40 of 40 are compounds** — `dual-use`,
+`AI-enabled`, `stand-off`, `next-generation`, `anti-submarine`,
+`cross-government`, and one URL (`open-\ngovernment-licence`). **None** is a
+true wrapped word. Dropping the hyphen therefore corrupted 40 compounds into
+`dualuse`/`standoff` to rescue nothing, pushing each into the fuzzy tier where
+it scraped past the floor at ~0.98.
+
+Keeping the hyphen and swallowing only the break moved **DIP fuzzy 15 → 5 and
+MOD fuzzy 5 → 2**, all into character-identical `normalised` matches at ratio
+1.0, with **no change to any alignment rate**. Same spans, two-thirds fewer of
+them depending on the narrow fuzzy floor — the cheapest hardening available
+against the margin problem described below. A genuinely wrapped word now
+degrades to a fuzzy match instead (one retained hyphen costs little ratio on any
+quote of reasonable length), or to UNRESOLVED — never to a wrong span.
+
+Two subtleties, both caught by property tests rather than by reading:
+
+* **Only true hyphens may rejoin, not en/em dashes.** All three flatten to `-`
+  for matching, so keying the rule off the flattened character glued
+  `"a clause —\nthen more"` into `"a clause -then more"`. The rule now tests the
+  *source* character's class.
+* **The rule must look only forwards.** An earlier version also checked the
+  character *before* the hyphen, which can lie outside a candidate span — making
+  `normalise(slice)` differ from `normalise(whole)` and quietly breaking the
+  re-verification step that the whole design rests on. Both tests are now local
+  to the slice.
 
 ## Why the unresolved cases fail
 
@@ -86,13 +124,24 @@ fuzzy match on the real corpus. Rates by floor:
 | **0.95** | **100.0%** | **97.9%** | **96.5%** |
 | 0.97 | 100.0% | 97.7% | 96.3% |
 
-The raw rate is not the thing to maximise. At 0.85 the extra 22 DIP matches are
-**wrong spans**: they are the group-1 stitched quotes, where a long shared
-lead-in carries the ratio while the tail names a different item, so
-`"…through the Defence Investment Plan: • Astute Class"` aligns at 0.9462 onto a
-span ending `"• Vanguard Class"`. A highlight pointing at the wrong bullet is
-worse than no highlight, and directly contrary to "no unaligned or unverified
-offset is ever stored as if it were a confirmed span".
+The raw rate is not the thing to maximise. 0.85 buys 22 extra DIP matches
+(1.3pp), and they split two ways:
+
+* **9 are wrong spans.** These are the group-1 stitched quotes, where a long
+  shared lead-in carries the ratio while the tail names a different item, so
+  `"…through the Defence Investment Plan: • Astute Class"` aligns at 0.9462 onto
+  a span ending `"• Vanguard Class"`. A highlight pointing at the wrong bullet
+  is worse than no highlight, and directly contrary to "no unaligned or
+  unverified offset is ever stored as if it were a confirmed span". These are
+  what the floor exists to exclude.
+* **13 are partial spans** — a contiguous prefix of the quote, every character
+  of which really is text the quote contains (`"substantial continued
+  investment in"`, `"…for the Maritime Domain"`). Losing these is a cost of the
+  higher floor, not a benefit.
+
+(Classified mechanically: a span is *partial* if its normalised text is a
+substring of the normalised quote, *wrong* if it contains text the quote does
+not.)
 
 On this corpus the two populations do separate, but not by much:
 
@@ -104,10 +153,12 @@ On this corpus the two populations do separate, but not by much:
   above).
 
 So the usable gap is about **0.004 wide**, and 0.95 sits inside it. Most correct
-fuzzy matches score far higher (0.97–0.99) and are pure PDF artefacts —
-`"AI-enabled"` vs `"AI-\nenabled"`, `"stand-off"` vs `"stand-\noff"` — but the
-two lowest accepted matches are word-level differences, not whitespace, so the
-margin should not be treated as comfortable.
+fuzzy matches score far higher (0.97–0.99) and are line-break artefacts inside
+otherwise identical text, but the two lowest accepted matches are word-level
+differences, so the margin should not be treated as comfortable. The
+de-hyphenation fix above reduces how much rides on it — two-thirds of the former
+fuzzy population now matches exactly, leaving 8 facts corpus-wide inside the
+fuzzy tier — but it does not widen the gap itself.
 
 **Known limitation of the mechanism, not just the value.** A single ratio is a
 blunt instrument for exactly this failure mode: a long shared prefix can carry a
@@ -127,10 +178,13 @@ Flagged rather than pre-emptively built.
 ## Ambiguity
 
 Quotes matching more than once inside their own chunk are common where the quote
-is just an entity name: 3 occurrences in the HTML page, 35 in MOD, 95 in DIP —
+is just an entity name: 4 occurrences in the HTML page, 40 in MOD, 135 in DIP —
 `"Defence"` alone matches 19 times in one MOD chunk. The first match within the
 chunk bounds is used and the ambiguity is reported by `dikms align`, not
-silently resolved.
+silently resolved. (These counts rose from 3/35/95 once occurrences were counted
+on the normalised text rather than the raw text — a quote appearing once
+verbatim can appear several times once typography is flattened, and the raw
+count was calling those unambiguous.)
 
 Two limits worth knowing before ingestion consumes this:
 
@@ -139,10 +193,13 @@ Two limits worth knowing before ingestion consumes this:
   from one of 19 candidates. Making it visible in the store means a
   `Provenance` field, which is a schema decision for the ingestion ticket rather
   than something to add here (backlogged);
-* occurrence counting only applies to the exact and normalised stages. A fuzzy
-  match reports one occurrence by construction — there is no cheap way to ask
-  "how many other regions would also have cleared the floor". Fuzzy matches are
-  1–2% of aligned facts, so this is a small blind spot, but it is a blind spot.
+* occurrence counting is done on the *normalised* text at every stage, including
+  when the exact stage wins — a quote occurring once verbatim can still occur
+  several times once typography is flattened, and counting raw occurrences would
+  have called that unambiguous. A fuzzy match still reports one occurrence by
+  construction, since there is no cheap way to ask "how many other regions would
+  also have cleared the floor". Fuzzy is now 0.4% of aligned facts, so this is a
+  small blind spot, but it is a blind spot.
 
 The practical mitigation is a longer quote, which again points back at the
 extraction prompt rather than at alignment.

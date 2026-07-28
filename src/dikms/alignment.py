@@ -55,8 +55,11 @@ _CHAR_MAP = {
     "‐": "-", "‑": "-", "‒": "-", "–": "-",   # hyphens/dashes
     "—": "-", "―": "-", "−": "-",
 }
-_HYPHENS = "-‐‑"
 _SOFT_HYPHEN = "­"
+# True hyphens, as opposed to en/em dashes. Both flatten to "-" for matching,
+# but only this class marks word-internal hyphenation, so only this class may
+# rejoin across a line break (see `normalise`).
+_JOIN_HYPHENS = frozenset("-‐‑")
 
 
 @dataclass(frozen=True)
@@ -74,51 +77,62 @@ class Normalised:
     ends: tuple[int, ...]
 
 
-def _is_wrap_hyphen(text: str, i: int) -> bool:
-    """True if the hyphen at ``i`` is a PDF line-wrap artefact ("capa-\\nbility").
-
-    Deliberately narrow: only a hyphen between a letter and a line break followed
-    by a lowercase letter, so genuine compounds ("state-of-the-art") survive.
-    """
-    if i == 0 or not text[i - 1].isalpha():
-        return False
-    j = i + 1
-    saw_break = False
-    while j < len(text) and text[j].isspace():
-        if text[j] in "\r\n":
-            saw_break = True
-        j += 1
-    return saw_break and j < len(text) and text[j].isalpha() and text[j].islower()
-
-
 @lru_cache(maxsize=512)  # a chunk window is normalised once, not once per fact
 def normalise(text: str) -> Normalised:
-    """Normalise ``text`` for matching, retaining a map back to source offsets."""
+    """Normalise ``text`` for matching, retaining a map back to source offsets.
+
+    A hyphen before a line break is **kept**, and only the break collapses (via
+    the whitespace rule below). PDF text wraps at hyphens for two different
+    reasons and they are indistinguishable without a dictionary: a compound
+    breaking at its own hyphen ("dual-\\nuse") versus a word hyphenated purely to
+    wrap ("capa-\\nbility"). Measured on the corpus, all 40 such sites across
+    both PDFs are the former and none the latter, so dropping the hyphen
+    corrupted 40 compounds ("dualuse") to rescue nothing. Keeping it makes those
+    match character-identically under normalisation; a genuine wrapped word
+    instead falls to the fuzzy stage, where a single extra hyphen costs little
+    ratio on any quote of reasonable length — and if it falls short, the outcome
+    is UNRESOLVED, never a wrong span.
+
+    Note that NFKC is applied per source character so the offset map stays at
+    one-source-character granularity. The trade-off is that combining sequences
+    do not compose: "cafe" + U+0301 will not match a precomposed "café" here.
+    That costs recall only (the fuzzy stage still sees them as near-identical);
+    it cannot produce a wrong span.
+    """
     out: list[str] = []
     starts: list[int] = []
     ends: list[int] = []
     i = 0
     n = len(text)
+    # Whether the character just emitted was a true hyphen (not an en/em dash),
+    # which is what may rejoin across a line break.
+    last_was_hyphen = False
     while i < n:
         ch = text[i]
-        if ch in _HYPHENS and _is_wrap_hyphen(text, i):
-            # Drop the hyphen and the line break it wraps: the word is one token.
-            j = i + 1
-            while j < n and text[j].isspace():
-                j += 1
-            i = j
-            continue
         if ch == _SOFT_HYPHEN:
             i += 1
             continue
         if ch.isspace():
             j = i
+            saw_break = False
             while j < n and text[j].isspace():
+                saw_break = saw_break or text[j] in "\r\n"
                 j += 1
-            if out:  # collapse runs to one space; drop leading whitespace
+            # A line break directly after a true hyphen is swallowed whole
+            # rather than collapsed to a space, so "stand-\noff" rejoins as
+            # "stand-off" and matches the quote the model actually returns.
+            # Both tests are deliberately *local* — the hyphen's own character
+            # class, and the character after the break. Looking back past the
+            # hyphen would read outside a slice, making normalise(slice) differ
+            # from normalise(whole), which `_verify` relies on being equal.
+            joins_hyphen = (
+                saw_break and last_was_hyphen and j < n and text[j].isalnum()
+            )
+            if out and not joins_hyphen:  # collapse runs to one space
                 out.append(" ")
                 starts.append(i)
                 ends.append(j)
+                last_was_hyphen = False
             i = j
             continue
         mapped = _CHAR_MAP.get(ch)
@@ -130,6 +144,7 @@ def normalise(text: str) -> Normalised:
             out.append(c)
             starts.append(i)
             ends.append(i + 1)
+        last_was_hyphen = ch in _JOIN_HYPHENS
         i += 1
     return Normalised(text="".join(out), starts=tuple(starts), ends=tuple(ends))
 
@@ -141,12 +156,13 @@ class QuoteMatch:
     span: Span
     method: str
     ratio: float
-    # How many times the quote was found in the chunk. >1 means the match was
-    # ambiguous; the first occurrence within the chunk bounds is used and the
-    # ambiguity is reported rather than silently resolved. Counted for the exact
-    # and normalised stages only — a fuzzy match always reports 1, since asking
-    # "how many other regions would also have cleared the floor" has no cheap
-    # answer. See notes/M1-alignment.md.
+    # How many times the quote was found in the chunk, counted on the normalised
+    # text. >1 means the match was ambiguous; the first occurrence within the
+    # chunk bounds is used and the ambiguity is reported rather than silently
+    # resolved. A fuzzy match always reports 1, since asking "how many other
+    # regions would also have cleared the floor" has no cheap answer — the one
+    # remaining blind spot, covering 1% of aligned facts. See
+    # notes/M1-alignment.md.
     occurrences: int
 
 
@@ -278,13 +294,20 @@ def align_quote(
         return None
 
     window = parsed.text[chunk.start : chunk.end]
+    window_norm = normalise(window)
     quote_norm = normalise(quote).text
     if not quote_norm:
         return None
 
+    # Ambiguity is always counted on the normalised text, even when the exact
+    # stage wins: a quote occurring once verbatim can still occur several times
+    # once typography is flattened, and reporting the raw count would call that
+    # unambiguous. This is the honest upper bound on "how many places in the
+    # chunk could this quote have come from".
+    occurrences = _count_occurrences(window_norm.text, quote_norm)
+
     # 1. Exact substring.
-    occurrences = _count_occurrences(window, quote)
-    if occurrences:
+    if quote in window:
         start = chunk.start + window.index(quote)
         match = _verify(
             parsed, start, start + len(quote), quote_norm,
@@ -294,8 +317,6 @@ def align_quote(
             return match
 
     # 2. Normalised substring.
-    window_norm = normalise(window)
-    occurrences = _count_occurrences(window_norm.text, quote_norm)
     if occurrences:
         a = window_norm.text.index(quote_norm)
         bounds = _map_back(window_norm, a, a + len(quote_norm), chunk.start)

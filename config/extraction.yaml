@@ -44,8 +44,8 @@ alignment:
   # whitespace/hyphen artefacts in an otherwise identical quote), while every
   # *wrong* one scores <= 0.946 — those are quotes the model stitched from
   # non-contiguous text, where a long shared prefix carries the ratio while the
-  # tail points at the wrong item. 0.95 separates the two cleanly and costs
-  # 0.6pp of raw alignment rate on the largest document.
+  # tail points at the wrong item. 0.95 separates the two and costs 1.3pp of
+  # raw alignment rate on the largest document (22 of 1735 facts).
   min_ratio: 0.95
   # Quotes shorter than this are never fuzzy-matched: over a handful of
   # characters the ratio is too coarse to tell a near-miss from a different

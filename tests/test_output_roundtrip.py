@@ -7,11 +7,37 @@ fields that are the traceability floor.
 
 from __future__ import annotations
 
+import pytest
 from test_alignment import PARSE_ID, entity, make_doc, provenance
 
 from dikms.extraction.pipeline import DocumentExtraction
 from dikms.models import AlignmentStatus, ChunkExtraction, ExtractedRelation, Span
-from dikms.output import document_to_dict, read_json, write_json
+from dikms.output import _merge_chunk_order, document_to_dict, read_json, write_json
+
+
+@pytest.mark.parametrize(
+    "sequences",
+    [
+        [["A", "B"], ["B", "A"], []],  # directly contradictory
+        [["A", "B"], ["B", "C"], ["C", "A"]],  # cyclic
+        [["A", "C"], ["B"], []],  # no shared chunk to order B against
+        [["A", "B", "C"], ["A", "C"], ["B"]],  # consistent
+        [[], [], []],
+    ],
+)
+def test_merge_chunk_order_emits_every_id_exactly_once(sequences):
+    """Including the fallback branch for orderings that cannot all be satisfied:
+    the result must still be a permutation, never a duplicated (and therefore
+    empty, phantom) chunk."""
+    merged = _merge_chunk_order([list(s) for s in sequences])
+    expected = {cid for seq in sequences for cid in seq}
+    assert sorted(merged) == sorted(expected)
+    assert len(merged) == len(set(merged))
+
+
+def test_merge_chunk_order_respects_consistent_orderings():
+    # B appears only in the second list, between A and C in the first.
+    assert _merge_chunk_order([["A", "C"], ["A", "B", "C"], []]) == ["A", "B", "C"]
 
 
 def test_write_read_write_is_stable(tmp_path):

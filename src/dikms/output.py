@@ -98,6 +98,10 @@ def _merge_chunk_order(sequences: list[list[str]]) -> list[str]:
     produced only relations would sort after a later chunk that produced
     entities, silently reordering facts on rewrite. Merging all three recovers
     the original order.
+
+    Chunks that share no list with each other cannot be ordered relative to one
+    another; any linear extension is returned, which still regenerates each list
+    identically. Every id is emitted exactly once.
     """
     seqs = [list(dict.fromkeys(s)) for s in sequences]
     order: list[str] = []
@@ -114,9 +118,12 @@ def _merge_chunk_order(sequences: list[list[str]]) -> list[str]:
             # fact is lost.
             head = next(s[0] for s in seqs if s)
         order.append(head)
+        # Remove wherever it appears, not just where it leads: in the fallback
+        # branch the id is mid-sequence elsewhere, and leaving it there would
+        # emit it a second time as a duplicate, empty chunk.
         for other in seqs:
-            if other and other[0] == head:
-                del other[0]
+            if head in other:
+                other.remove(head)
     return order
 
 

@@ -48,7 +48,8 @@ CHUNK_ONE_TEXT = (
     "(FADS) programme.\n"
     "It will deliver the “Type 83 destroyer” and a maritime\n"
     "integrated air and missile defence capa-\nbility for the fleet. "
-    "The oﬃce of the CIO oversees the work."
+    "The oﬃce of the CIO oversees the work. "
+    "It carries stand-\noff weapons and a next-\ngeneration radar."
 )
 CHUNK_TWO_TEXT = (
     "Separately, Defence Digital funds the Digital Targeting Web. "
@@ -145,14 +146,45 @@ def test_curly_quotes_and_line_breaks_align_via_normalisation():
     assert normalise(sliced).text == normalise(quote).text  # ...same text
 
 
-def test_pdf_artefacts_hyphenation_and_ligature_align():
+def test_ligature_aligns_via_normalisation():
+    quote = "The office of the CIO oversees the work"
+    parsed, match = align_one(quote)
+    assert match is not None
+    assert match.method == MATCH_NORMALISED
+    sliced = parsed.text[match.span.start : match.span.end]
+    assert "ﬃ" in sliced  # the raw source really does use the ffi ligature
+    assert normalise(sliced).text == normalise(quote).text
+
+
+def test_compound_broken_at_its_own_hyphen_rejoins_exactly():
+    """The case that actually occurs in the corpus: all 40 hyphen-at-linebreak
+    sites across both PDFs are compounds breaking at their own hyphen, not words
+    hyphenated to wrap. The hyphen is kept and only the break is swallowed, so
+    these match character-identically rather than leaning on the fuzzy floor."""
+    quote = "It carries stand-off weapons and a next-generation radar."
+    parsed, match = align_one(quote)
+    assert match is not None
+    assert match.method == MATCH_NORMALISED
+    assert match.ratio == 1.0
+    sliced = parsed.text[match.span.start : match.span.end]
+    assert "stand-\noff" in sliced  # the raw source really is broken at the hyphen
+    assert normalise(sliced).text == normalise(quote).text
+
+
+def test_genuinely_wrapped_word_falls_through_to_fuzzy():
+    """The converse case, indistinguishable without a dictionary: a word
+    hyphenated purely to wrap keeps its hyphen too, so it can no longer match
+    exactly. It degrades to a fuzzy match — never to a wrong span."""
     quote = "missile defence capability for the fleet. The office of the CIO"
     parsed, match = align_one(quote)
     assert match is not None
+    assert match.method == MATCH_FUZZY
     sliced = parsed.text[match.span.start : match.span.end]
-    assert "capa-\nbility" in sliced  # the raw source really is hyphen-wrapped
-    assert "ﬃ" in sliced  # ...and really does use the ffi ligature
-    assert normalise(sliced).text == normalise(quote).text
+    assert "capa-\nbility" in sliced
+    # The one retained hyphen is the only difference.
+    assert normalise(sliced).text == normalise(quote).text.replace(
+        "capability", "capa-bility"
+    )
 
 
 def test_near_miss_quote_aligns_fuzzily_above_the_floor():
@@ -234,6 +266,74 @@ def test_ambiguous_quote_uses_first_match_and_records_the_count():
     assert match is not None
     assert match.occurrences == 2
     assert match.span.start == parsed.text.index(quote)  # first occurrence wins
+
+
+def test_hyphen_join_does_not_fire_on_punctuation_or_list_markers():
+    """The join rule keys off a preceding "-", so check it cannot swallow a
+    break after a dash used as punctuation or a hyphen bullet — that would glue
+    unrelated words together and shift every following offset."""
+    cases = {
+        # em dash normalises to "-", but is followed by a space, not a wrap
+        "a clause —\nthen more": "a clause - then more",
+        # hyphen bullet at the start of a line: the break before it is not
+        # preceded by a hyphen, so it collapses normally
+        "items:\n- first\n- second": "items: - first - second",
+        # a real compound wrap still joins
+        "stand-\noff": "stand-off",
+    }
+    for source, expected in cases.items():
+        assert normalise(source).text == expected, source
+
+
+# Adversarial characters: ligatures, soft hyphen, combining marks, curly
+# punctuation, exotic spaces, CRLF — everything the offset map has to survive.
+_FUZZ_ALPHABET = "ab -‐–—\n\r\t \xa0 ﬁﬃ\xad'’\"“́é.:"
+
+
+def test_offset_map_invariants_hold_on_adversarial_input():
+    """The offset map is the most dangerous code here: normalisation is not
+    length-preserving, so a wrong map yields a plausible-looking but WRONG span.
+    These invariants are what `_map_back` relies on."""
+    import random
+
+    rng = random.Random(20260724)
+    for _ in range(3000):
+        text = "".join(
+            rng.choice(_FUZZ_ALPHABET) for _ in range(rng.randint(0, 60))
+        )
+        norm = normalise(text)
+        assert len(norm.starts) == len(norm.text)
+        assert len(norm.ends) == len(norm.text)
+        for k in range(len(norm.text)):
+            # In range, non-empty, and pointing at real source characters.
+            assert 0 <= norm.starts[k] < norm.ends[k] <= len(text)
+            if k:
+                # Monotonic: normalised order follows source order.
+                assert norm.starts[k] >= norm.starts[k - 1]
+                assert norm.ends[k] >= norm.ends[k - 1]
+
+
+def test_mapped_back_span_renormalises_to_contain_the_match():
+    """The end-to-end guarantee: whatever region the map produces, re-slicing
+    the source at those offsets and normalising again must still contain the
+    text that was matched."""
+    import random
+
+    rng = random.Random(20260725)
+    for _ in range(2000):
+        text = "".join(
+            rng.choice(_FUZZ_ALPHABET) for _ in range(rng.randint(4, 80))
+        )
+        norm = normalise(text)
+        if len(norm.text) < 3:
+            continue
+        a = rng.randrange(0, len(norm.text) - 1)
+        b = rng.randrange(a + 1, len(norm.text) + 1)
+        matched = norm.text[a:b].strip()
+        if not matched:
+            continue
+        start, end = norm.starts[a], norm.ends[b - 1]
+        assert matched in normalise(text[start:end]).text
 
 
 # --- config, not code -----------------------------------------------------
@@ -427,6 +527,14 @@ def test_parse_id_mismatch_fails_loudly_and_changes_nothing():
         p.alignment_status is AlignmentStatus.PENDING and p.span is None
         for p in all_provenance(doc)
     )
+
+
+def test_align_quote_rejects_a_chunk_from_another_parse():
+    """The chunk-level guard, below `align_document`'s document-level one."""
+    parsed = make_parsed()
+    foreign = make_chunks(make_parsed(parse_id=OTHER_PARSE_ID))[0]
+    with pytest.raises(ValueError, match="belongs to parse"):
+        align_quote(parsed, foreign, "Future Air Dominance System", CONFIG)
 
 
 def test_unknown_chunk_id_fails_loudly():
