@@ -1,8 +1,9 @@
 """Tests for the extraction prompt (issue #23).
 
-Rule 3 must require the supporting quote to be one contiguous passage, so the
-model stops stitching phrases from separate places into a quote that span
-alignment cannot locate. Offline: the Gemini client is replaced by a fake that
+Rule 3 must require the supporting quote to be one contiguous passage, with no
+words skipped by an ellipsis unless the ellipsis is in the source, so the model
+stops stitching phrases from separate places into a quote that span alignment
+cannot locate. Offline: the Gemini client is replaced by a fake that
 records what would have been sent.
 """
 
@@ -22,6 +23,15 @@ CONTIGUITY_PHRASES = (
     "ONE CONTIGUOUS passage of the chunk",
     "never phrases joined together from separate places",
     "if the support is spread out, quote the single most supportive passage",
+)
+
+# Explicit elision ("current and future warhead...programmes") is one form of
+# stitching in the M0 output. The rule forbids inserting an ellipsis but must
+# not ban one outright, because a source can contain a genuine ellipsis.
+ELLIPSIS_PHRASES = (
+    "Never skip words with an ellipsis",
+    '("..." or "…")',
+    "a quote may contain an ellipsis only where the chunk itself contains one",
 )
 
 
@@ -48,11 +58,18 @@ def test_rule_three_requires_a_contiguous_quote() -> None:
     assert "never invent character positions or offsets" in rule3
 
 
+def test_rule_three_forbids_inserted_ellipses() -> None:
+    rule3 = _rules(prompt.SYSTEM_INSTRUCTION)[3]
+    for phrase in ELLIPSIS_PHRASES:
+        assert phrase in rule3
+
+
 def test_contiguity_rule_appears_only_in_rule_three() -> None:
     rules = _rules(prompt.SYSTEM_INSTRUCTION)
     for number, text in rules.items():
         if number != 3:
             assert "CONTIGUOUS" not in text
+            assert "ellipsis" not in text
 
 
 class _FakeResponse:
@@ -94,6 +111,6 @@ def test_extractor_sends_the_contiguity_rule() -> None:
     (call,) = fake.models.calls
     sent = call["config"].system_instruction
     assert sent == prompt.SYSTEM_INSTRUCTION
-    for phrase in CONTIGUITY_PHRASES:
+    for phrase in CONTIGUITY_PHRASES + ELLIPSIS_PHRASES:
         assert phrase in _rules(sent)[3]
     assert call["contents"] == prompt.build_user_prompt(ontology, chunk)

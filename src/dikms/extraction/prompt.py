@@ -5,9 +5,9 @@ The prompt enforces the design constraints directly:
 * anything important that does not fit becomes a *proposal* (HITL gating —
   the model proposes, it never extends the ontology itself);
 * every item must carry a verbatim supporting quote from the chunk, taken from
-  one contiguous passage (DECISIONS.md, issue #23), and the
-  model is told NOT to emit character offsets (offsets are derived later by
-  verified alignment, not trusted from the model).
+  one contiguous passage with no words skipped by an ellipsis (DECISIONS.md,
+  issue #23), and the model is told NOT to emit character offsets (offsets are
+  derived later by verified alignment, not trusted from the model).
 """
 
 from __future__ import annotations
@@ -30,8 +30,10 @@ human; they never change the ontology automatically.
 text copied VERBATIM from the provided chunk that supports the item. Copy it \
 exactly, character for character. The quote must be ONE CONTIGUOUS passage of \
 the chunk, never phrases joined together from separate places; if the support \
-is spread out, quote the single most supportive passage. Never paraphrase the \
-quote and never invent character positions or offsets.
+is spread out, quote the single most supportive passage. Never skip words with \
+an ellipsis ("..." or "…"): a quote may contain an ellipsis only where the chunk \
+itself contains one. Never paraphrase the quote and never invent character \
+positions or offsets.
 4. Extract only what the text supports. Do not add outside knowledge.
 5. Populate an entity's declared `attributes` where the text supports them, \
 choosing from the controlled vocabulary when one is listed; omit any attribute \
