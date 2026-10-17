@@ -774,9 +774,9 @@ def _is_blank(prop: PropertyDef, value: Any) -> bool:
 
 
 def _check_number(name: str, prop: PropertyDef, value: float) -> None:
-    """Finite, and inside any declared bounds. NaN would pass a naive
-    ``min <= value <= max`` written the other way round, and a confidence of
-    7.5 or NaN would rank above every real one."""
+    """Finite, and inside any declared bounds. NaN compares false with
+    everything, so the bounds alone would not catch it; and a confidence of
+    7.5 or NaN would rank or sort unpredictably against every real one."""
     if not math.isfinite(value):
         raise SchemaViolation(f"{name}.{prop.name}: {value!r} is not finite")
     if prop.minimum is not None and value < prop.minimum:
