@@ -154,9 +154,11 @@ relation_types:
 
   - name: extracted_from
     description: >-
-      Provenance edge from any extracted entity/relation to its Source.
-      Mandatory on every extraction — attached by the pipeline, not emitted
-      by the LLM.
+      Provenance edge from an extracted entity to its Source, one per
+      extraction. Mandatory on every extracted entity — attached by the
+      pipeline, not emitted by the LLM. A relation has no such edge (an edge
+      cannot start from another edge); it carries the same provenance as its
+      own properties and traces back to its Source through its source_id.
     structural: true
     domain: ["*"]
     range: [Source]
