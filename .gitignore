@@ -18,6 +18,9 @@ terraform/terraform.tfvars
 application_default_credentials.json
 .claude/settings.local.json
 
+# Agent worktrees (see CLAUDE.md, "Agent automation")
+.claude/worktrees/
+
 # Fetched source corpus and pipeline output — large, reproducible, not source-controlled.
 # The manifest (data/sources.yaml) IS tracked; the downloaded documents are not.
 data/corpus/
