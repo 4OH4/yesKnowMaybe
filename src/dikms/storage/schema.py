@@ -16,9 +16,11 @@ Provenance (CLAUDE.md constraint 1)
 Every fact-bearing node and edge carries the provenance block, using exactly
 the field names of :class:`dikms.models.Provenance` — no parallel vocabulary:
 
-* Mandatory, non-nullable: ``source_id``, ``chunk_id``, ``section_refs``,
-  ``supporting_quote``, ``extraction_model``, ``extracted_at``. A fact cannot
-  be represented in this schema without its document/section provenance.
+* Mandatory, non-nullable and non-empty: ``source_id``, ``chunk_id``,
+  ``section_refs``, ``supporting_quote``, ``extraction_model``,
+  ``extracted_at``. A fact cannot be represented in this schema without its
+  document/section provenance. ``extracted_at`` must parse as ISO 8601 with a
+  UTC offset and is stored in one normalised UTC form.
 * Exact-span fields, present only when alignment verified them:
   ``span_parse_id``, ``span_start``, ``span_end`` (nullable). ``Span`` is
   flattened into three properties because neither backend stores nested
@@ -53,8 +55,9 @@ Primary key ``id``    ``PRIMARY KEY`` on the node    ``PRIMARY KEY`` on the inpu
                       table                          table
 STRING / INT64 /      ``STRING`` / ``INT64`` /       ``STRING(MAX)`` / ``INT64`` /
 DOUBLE / BOOL         ``DOUBLE`` / ``BOOL``          ``FLOAT64`` / ``BOOL``
-TIMESTAMP             stored as ``STRING`` (ISO      stored as ``STRING(MAX)`` (ISO
-                      8601, as ``models.now_iso``)   8601) — same representation
+TIMESTAMP             stored as ``STRING``, one      stored as ``STRING(MAX)``, the
+                      fixed-width UTC ISO 8601 form  same form — so string order is
+                      (:func:`normalise_timestamp`)  chronological in both
 STRING_LIST           ``STRING[]``                   ``ARRAY<STRING(MAX)>``
                       (``section_refs``)             (``section_refs``)
 Required property     **no DDL equivalent** — Kùzu   ``NOT NULL``
@@ -94,6 +97,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -661,6 +665,71 @@ def _check_type(owner: str, prop: PropertyDef, value: Any) -> None:
         raise SchemaViolation(f"{owner}.{prop.name}: expected a list of numbers")
 
 
+def parse_timestamp(value: str) -> datetime:
+    """Parse an ISO 8601 timestamp that carries a UTC offset.
+
+    A naive timestamp is refused: "when was this extracted" is part of a
+    fact's provenance, and a time with no offset cannot be placed on one
+    timeline. Raises :class:`ValueError` on anything else.
+    """
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("expected a non-empty ISO 8601 string")
+    parsed = datetime.fromisoformat(value.strip())
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{value!r} has no UTC offset")
+    return parsed
+
+
+def normalise_timestamp(value: str) -> str:
+    """The one stored form of a timestamp: UTC, ``+00:00``, microseconds.
+
+    Fixed width (``YYYY-MM-DDTHH:MM:SS.ffffff+00:00``), so string order is
+    chronological order in both backends, which store timestamps as strings
+    (see the mapping table). ``Z`` and ``+00:00`` inputs, or any other offset,
+    all normalise to the same string for the same instant.
+    """
+    return (
+        parse_timestamp(value)
+        .astimezone(UTC)
+        .isoformat(timespec="microseconds")
+    )
+
+
+def normalise_properties(
+    definition: NodeDef | EdgeDef, properties: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Copy ``properties`` with every timestamp in its one stored form.
+
+    Values that do not parse are left as they are for
+    :func:`validate_properties` to reject with a schema error.
+    """
+    props = dict(properties)
+    for prop in definition.properties:
+        value = props.get(prop.name)
+        if prop.type is PropertyType.TIMESTAMP and isinstance(value, str):
+            try:
+                props[prop.name] = normalise_timestamp(value)
+            except ValueError:
+                pass
+    return props
+
+
+def _is_blank(prop: PropertyDef, value: Any) -> bool:
+    """True when a present value carries no information.
+
+    A required string that is empty or whitespace, or a required list that is
+    empty or holds only such strings, is as good as missing: ``source_id=""``
+    names no document and ``section_refs=[]`` no section.
+    """
+    if prop.type in (PropertyType.STRING, PropertyType.TIMESTAMP):
+        return isinstance(value, str) and not value.strip()
+    if prop.type is PropertyType.STRING_LIST:
+        return isinstance(value, (list, tuple)) and (
+            not value or any(isinstance(v, str) and not v.strip() for v in value)
+        )
+    return False
+
+
 def validate_properties(
     definition: NodeDef | EdgeDef,
     properties: Mapping[str, Any],
@@ -670,10 +739,12 @@ def validate_properties(
     Enforces, backend-independently:
 
     * no unknown properties (both backends need declared columns);
-    * every required property present and non-``None`` — which is what makes
-      "a fact cannot be stored without its provenance" true rather than
-      aspirational;
+    * every required property present, non-``None`` and non-empty (no empty
+      or whitespace string, no empty list, no empty list item) — which is
+      what makes "a fact cannot be stored without its provenance" true rather
+      than aspirational;
     * declared property types (both backends have typed columns);
+    * timestamps parse as ISO 8601 with a UTC offset;
     * controlled vocabularies;
     * vector width matches the configured dimension.
     """
@@ -697,6 +768,16 @@ def validate_properties(
             continue
         prop = declared[key]
         _check_type(name, prop, value)
+        if prop.required and _is_blank(prop, value):
+            raise SchemaViolation(f"{name}.{key}: required property is empty")
+        if prop.type is PropertyType.TIMESTAMP:
+            try:
+                parse_timestamp(value)
+            except ValueError as exc:
+                raise SchemaViolation(
+                    f"{name}.{key}: {value!r} is not an ISO 8601 timestamp with a "
+                    f"UTC offset ({exc})"
+                ) from None
         if prop.values and value not in prop.values:
             raise SchemaViolation(
                 f"{name}.{key}: {value!r} not in {list(prop.values)}"

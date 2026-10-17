@@ -328,10 +328,10 @@ def test_wrong_width_vector_is_rejected(schema: GraphSchema) -> None:
         "name": "X",
         "source_id": "s",
         "chunk_id": "c",
-        "section_refs": [],
+        "section_refs": ["p. 1"],
         "supporting_quote": "q",
         "extraction_model": "m",
-        "extracted_at": "t",
+        "extracted_at": "2026-07-24T09:00:00+00:00",
         "alignment_status": "pending",
         "embedding": [0.0] * (schema.vector_dimension - 1),
     }
@@ -359,10 +359,10 @@ def test_controlled_vocabulary_is_enforced(schema: GraphSchema) -> None:
         "name": "X",
         "source_id": "s",
         "chunk_id": "c",
-        "section_refs": [],
+        "section_refs": ["p. 1"],
         "supporting_quote": "q",
         "extraction_model": "m",
-        "extracted_at": "t",
+        "extracted_at": "2026-07-24T09:00:00+00:00",
         "alignment_status": "definitely-aligned",
     }
     with pytest.raises(SchemaViolation, match="alignment_status"):
@@ -381,7 +381,7 @@ def test_property_types_are_enforced(schema: GraphSchema) -> None:
         "section_refs": ["p. 1"],
         "supporting_quote": "q",
         "extraction_model": "m",
-        "extracted_at": "t",
+        "extracted_at": "2026-07-24T09:00:00+00:00",
         "alignment_status": "pending",
     }
     validate_properties(node, base)

@@ -249,6 +249,59 @@ def test_the_primary_key_property_must_match_the_node_id(
         adapter.upsert_node("Programme", "p:asgard", props)
 
 
+@pytest.mark.parametrize("bad_id", ["", " ", "\t"])
+def test_an_empty_node_id_is_refused(adapter: StubAdapter, bad_id: str) -> None:
+    props = _programme(bad_id, "ASGARD")
+    with pytest.raises(ValueError, match="node id"):
+        adapter.upsert_node("Programme", bad_id, props)
+    with pytest.raises(ValueError, match="node id"):
+        adapter.upsert_edge(
+            "develops",
+            NodeRef("Organisation", bad_id),
+            NodeRef("Programme", "p:asgard"),
+            provenance_properties(_provenance()),
+        )
+    assert adapter.nodes == {} and adapter.edges == {}
+
+
+def test_empty_provenance_is_refused_on_a_write(adapter: StubAdapter) -> None:
+    """The reviewer's probe: every provenance field present but empty."""
+    props = dict(
+        _programme("p:x", "X"),
+        source_id="",
+        chunk_id="",
+        section_refs=[],
+        supporting_quote="",
+        extraction_model="",
+        extracted_at="",
+    )
+    with pytest.raises(SchemaViolation, match="empty"):
+        adapter.upsert_node("Programme", "p:x", props)
+    with pytest.raises(SchemaViolation, match="extracted_at"):
+        adapter.upsert_node(
+            "Programme", "p:x", dict(_programme("p:x", "X"), extracted_at="yesterday")
+        )
+    assert adapter.nodes == {}
+
+
+def test_timestamps_are_stored_in_one_utc_form(adapter: StubAdapter) -> None:
+    """``Z``, ``+00:00`` and another offset for one instant store identically,
+    so string ordering in either backend is chronological."""
+    stored = set()
+    spellings = (
+        "2026-07-24T09:00:00Z",
+        "2026-07-24T09:00:00+00:00",
+        "2026-07-24T10:00:00+01:00",
+    )
+    for i, spelling in enumerate(spellings):
+        node_id = f"p:{i}"
+        adapter.upsert_node(
+            "Programme", node_id, dict(_programme(node_id, "X"), extracted_at=spelling)
+        )
+        stored.add(adapter.nodes[("Programme", node_id)]["extracted_at"])
+    assert stored == {"2026-07-24T09:00:00.000000+00:00"}
+
+
 def test_unknown_label_or_edge_type_is_reported(adapter: StubAdapter) -> None:
     with pytest.raises(KeyError, match="Widget"):
         adapter.upsert_node("Widget", "w:1", {})

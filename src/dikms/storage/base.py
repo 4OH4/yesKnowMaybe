@@ -43,8 +43,17 @@ from .schema import (
     GraphSchema,
     NodeDef,
     apply_defaults,
+    normalise_properties,
     validate_properties,
 )
+
+
+def _require_id(label: str, node_id: object) -> None:
+    """A node id names the node a fact is about; an empty one names nothing."""
+    if not isinstance(node_id, str) or not node_id.strip():
+        raise ValueError(
+            f"{label}: node id must be a non-empty string, got {node_id!r}"
+        )
 
 
 class Direction(StrEnum):
@@ -315,7 +324,10 @@ class StorageAdapter(ABC):
         construction rather than by convention.
         """
         definition = self.schema.node(label)
-        props = apply_defaults(definition, properties)
+        _require_id(label, node_id)
+        props = normalise_properties(
+            definition, apply_defaults(definition, properties)
+        )
         key = props.get(definition.primary_key)
         if key is not None and key != node_id:
             raise ValueError(
@@ -335,6 +347,8 @@ class StorageAdapter(ABC):
     ) -> tuple[EdgeRef, dict[str, Any]]:
         """Validate an edge write; return its key and the properties to store."""
         definition = self.schema.edge(edge_type)
+        _require_id(source.label, source.id)
+        _require_id(target.label, target.id)
         if (source.label, target.label) not in definition.pairs():
             raise ValueError(
                 f"{edge_type}: {source.label} -> {target.label} is not a permitted "
@@ -345,7 +359,9 @@ class StorageAdapter(ABC):
             # start of treating identity as a property of one node rather than
             # a reviewable claim about a pair (CLAUDE.md constraint 2).
             raise ValueError(f"{edge_type}: cannot link {source.id} to itself")
-        props = apply_defaults(definition, properties)
+        props = normalise_properties(
+            definition, apply_defaults(definition, properties)
+        )
         validate_properties(definition, props)
         return self.edge_ref(edge_type, source, target, props), props
 
