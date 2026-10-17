@@ -40,7 +40,7 @@ from typing import Any
 
 DEFAULT_REPO = "4OH4/yesKnowMaybe"
 DEFAULT_OWNER = "4OH4"
-DEFAULT_PROJECT = 0  # set once the board exists (issue #2)
+DEFAULT_PROJECT = 2
 STATUSES = ["Backlog", "Ready", "In progress", "Agent review", "Human review", "Done"]
 DEPENDS_RE = re.compile(r"^Depends on #(\d+)", re.MULTILINE)
 BOARD_MARKER = (

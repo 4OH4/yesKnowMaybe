@@ -30,6 +30,8 @@ before an agent picks it up.
 
 ## The board
 
+https://github.com/users/4OH4/projects/2, linked to this repo.
+
 `Backlog` → `Ready` → `In progress` → `Agent review` → `Human review` → `Done`
 
 - **Backlog**: written, but not yet startable: a dependency is still open, or

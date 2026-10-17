@@ -174,7 +174,8 @@ every PR reaches him ready to merge as it is:
   Vertex, quota requests, `terraform apply`, GitHub settings, a decision
   between real alternatives. Give the shortest exact steps.
 
-**Board.** The GitHub Project board is the source of truth for status. Use
+**Board.** The GitHub Project board
+(https://github.com/users/4OH4/projects/2) is the source of truth for status. Use
 `scripts/board.py` to read and move cards rather than editing them by hand:
 - `uv run python scripts/board.py show`: issues grouped by status.
 - `uv run python scripts/board.py set <issue> "<status>"`: statuses are
