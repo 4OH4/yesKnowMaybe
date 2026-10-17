@@ -98,7 +98,9 @@ extraction is run):**
 - `governs` (Organisation → Programme/Organisation) — v2
 - `member_of` (Organisation → Organisation) — v2
 - `extracted_from` (any entity/relation → Source) — the provenance edge,
-  mandatory on every extraction
+  mandatory on every extraction. In the stored graph only an entity has this
+  edge; a relation carries the same provenance as its own properties (see
+  Knowledge store → Schema decisions)
 - `same_as` — confidence-weighted, see Entity Resolution below
 - `mentions` (Source → any entity) — lighter-weight than a substantive
   relation, used for "mention of existing data" review-queue items
@@ -110,7 +112,9 @@ it to be revised after M0 shows what real documents actually produce.
 
 Every entity and relation extracted must carry:
 
-- Source document/page identifier (`extracted_from` edge to a `Source` node)
+- Source document/page identifier (for an entity, an `extracted_from` edge to
+  a `Source` node; for a relation, its own `source_id`, since an edge cannot
+  start an edge)
 - Extraction timestamp
 - Ideally, the specific text span supporting the extraction
 
@@ -348,7 +352,7 @@ step, but the embedded Kùzu path needs none of that.
 ### Schema decisions worth stating outside the code
 
 The declarative schema lives in `src/dikms/storage/schema.py`, which carries the
-full element-by-element Kùzu ↔ Spanner Graph mapping. Three choices there are
+full element-by-element Kùzu ↔ Spanner Graph mapping. Four choices there are
 design decisions rather than implementation detail:
 
 - **Node labels and edge types are derived from `config/ontology.yaml`**, never
@@ -369,6 +373,17 @@ design decisions rather than implementation detail:
   what makes "rankable by significance where multiple sources support one
   fact" achievable. Nodes carry a single provenance block recording the most
   recent extraction; the full history lives on the `extracted_from` edges.
+- **A relation traces back through its own `source_id`, not an
+  `extracted_from` edge.** A property-graph edge cannot start from another
+  edge, in Kùzu or Spanner Graph, so `extracted_from` runs from entity nodes
+  to `Source` only, narrower than the ontology's "any entity/relation". A
+  relation instead carries the full provenance block (`source_id`,
+  `chunk_id`, `section_refs`, `supporting_quote`, `extraction_model`,
+  `extracted_at`, span fields) as its own properties. Because relation edges
+  are keyed per extraction, each stored edge is one extraction, and its
+  trace-back resolves `source_id` to the `Source` node. The shared write
+  helpers check that an edge with a `Source` endpoint (`extracted_from`,
+  `mentions`) names that same `Source` in its `source_id`.
 
 ## Retrieval
 

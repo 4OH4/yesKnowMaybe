@@ -155,9 +155,21 @@ class ProvenanceHit:
     """A fact and the source that backs it.
 
     ``provenance`` is the stored provenance property block (the field names of
-    :class:`dikms.models.Provenance`); ``source`` is the ``Source`` node the
-    fact's ``extracted_from`` edge points at, so a trace-back answers "which
-    document, which chunk, which section, when" in one read.
+    :class:`dikms.models.Provenance`), so a trace-back answers "which
+    document, which chunk, which section, when" in one read. ``source`` is
+    the ``Source`` node that block names, found differently by subject:
+
+    * **a node** (entity): the ``Source`` at the end of one of its
+      ``extracted_from`` edges, one hit per edge, each with that edge's
+      provenance block;
+    * **an edge** (relation): the ``Source`` whose id is the edge's *own*
+      ``source_id`` property, with the edge's own block as ``provenance``.
+      A property-graph edge cannot start another edge, in Kùzu or Spanner
+      Graph, so a relation has no ``extracted_from`` edge; its provenance
+      travels on it as properties instead, and one stored edge is one
+      extraction (see :class:`EdgeRef`).
+
+    ``source`` is ``None`` only if the named ``Source`` node is absent.
     """
 
     subject: NodeRef | EdgeRef
@@ -205,7 +217,8 @@ class StorageAdapter(ABC):
         **Upsert overwrites the node.** A node carries one provenance block,
         recording the most recent extraction of that entity (``DECISIONS.md``
         defers attribute-level provenance). Earlier extractions are not lost:
-        every extraction also writes an ``extracted_from`` edge, and those are
+        every extraction of an entity also writes an ``extracted_from`` edge
+        from the node to its ``Source``, and those are
         keyed per (source, chunk) — see :class:`EdgeRef` — so each occurrence
         survives and :meth:`trace_back` returns all of them. Callers writing a
         fact must write both; the node alone is not a complete record of where
@@ -222,6 +235,11 @@ class StorageAdapter(ABC):
     ) -> EdgeRef:
         """Insert or update one edge, carrying arbitrary declared properties
         (confidence, provenance, timestamps) without contortion.
+
+        A relation's provenance block is on the edge itself; there is no
+        ``extracted_from`` edge for a relation, because a property-graph edge
+        cannot start from an edge. Its trace-back goes through its own
+        ``source_id`` (see :meth:`trace_back`).
 
         The stored edge is keyed as :meth:`edge_ref` describes — for a
         fact-bearing edge that includes ``source_id`` and ``chunk_id``, so
@@ -285,6 +303,14 @@ class StorageAdapter(ABC):
         A list, not a single record: the same fact may be supported by several
         sources, and ``ARCHITECTURE.md`` requires those to be rankable by
         significance rather than collapsed.
+
+        For a node, one hit per ``extracted_from`` edge. For an edge, the
+        relation traces back through its own ``source_id``/``chunk_id``
+        properties, not an ``extracted_from`` edge (an edge cannot start an
+        edge): an occurrence ref (:meth:`EdgeRef.is_occurrence`) gives that
+        one extraction's hit, and a generic ref (no ``source_id``/``chunk_id``)
+        gives one hit per stored extraction of that relation between those
+        endpoints. See :class:`ProvenanceHit`.
         """
 
     # -- lifecycle ------------------------------------------------------

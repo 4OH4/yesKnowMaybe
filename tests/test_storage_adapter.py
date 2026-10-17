@@ -202,6 +202,27 @@ def test_an_edge_to_a_source_must_name_that_source(
     assert checked, "no provenanced edge type touches a Source node"
 
 
+def test_every_relation_traces_back_through_its_own_source_id(
+    adapter: StubAdapter, schema: GraphSchema
+) -> None:
+    """An edge cannot start an edge, so no relation has an ``extracted_from``
+    edge; each stored relation edge must therefore name its own source and
+    chunk, i.e. its key is one extraction (an occurrence)."""
+    assert set(schema.edge("extracted_from").source_labels).isdisjoint(
+        schema.edge_types()
+    )
+    props = provenance_properties(_provenance())
+    for edge in schema.edges:
+        if edge.structural:
+            continue
+        source_label, target_label = edge.pairs()[0]
+        ref = adapter.upsert_edge(
+            edge.type, NodeRef(source_label, "e:1"), NodeRef(target_label, "e:2"), props
+        )
+        assert ref.is_occurrence(), edge.type
+        assert adapter.edges[ref]["source_id"] == props["source_id"]
+
+
 def test_a_second_source_adds_an_edge_rather_than_overwriting_the_first(
     adapter: StubAdapter,
 ) -> None:

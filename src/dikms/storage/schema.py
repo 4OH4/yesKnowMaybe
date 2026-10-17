@@ -32,6 +32,17 @@ the field names of :class:`dikms.models.Provenance` — no parallel vocabulary:
   backing and which don't" is only answerable if the status is always there —
   and :class:`dikms.models.Provenance` likewise always carries a value.
 
+How a fact reaches its ``Source`` depends on what the fact is:
+
+* **An entity** (a node) has an ``extracted_from`` edge to its ``Source``
+  for each extraction, carrying that extraction's provenance block.
+* **A relation** (an edge) carries its provenance block as its own
+  properties and traces back through its own ``source_id``/``chunk_id``.
+  It has no ``extracted_from`` edge: a property-graph edge cannot start
+  from another edge, in Kùzu or Spanner Graph, so ``extracted_from``'s
+  source labels are the entity labels only, narrower than the ontology's
+  ``domain: ["*"]`` and its "any extracted entity/relation" description.
+
 Identity (CLAUDE.md constraint 2)
 ---------------------------------
 ``same_as`` is a pairwise edge carrying ``confidence`` and ``review_status``.
@@ -479,7 +490,9 @@ def build_schema(ontology: Ontology, vector_dimension: int) -> GraphSchema:
     edges: list[EdgeDef] = []
     for relation in ontology.relation_types:
         if relation.name == EXTRACTED_FROM:
-            # The provenance edge itself: any fact-bearing node -> Source.
+            # The provenance edge itself: any entity node -> Source. Not from
+            # a relation: an edge cannot start an edge, so a relation's
+            # provenance lives on the relation (see module docstring).
             edges.append(
                 EdgeDef(
                     type=relation.name,
