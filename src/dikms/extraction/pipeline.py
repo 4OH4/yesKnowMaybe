@@ -3,7 +3,8 @@
 Off-ontology types are not dropped: the model is instructed to stay within the
 ontology, but if it emits an unknown type anyway that is recorded as a warning
 for manual review rather than silently discarded — surfacing model behaviour is
-exactly what M0 is for.
+exactly what M0 is for. The same goes for relations whose source/target types
+fall outside the relation's declared domain/range: warned about, never dropped.
 """
 
 from __future__ import annotations
@@ -14,6 +15,10 @@ from typing import Protocol
 from ..chunking import DEFAULT_MAX_CHARS, DEFAULT_TARGET_CHARS, chunk_document
 from ..models import ChunkExtraction, ExtractedEntity, ExtractedRelation, ParsedDocument, TypeProposal
 from ..ontology import Ontology
+
+
+_DOMAIN_MARK = "outside declared domain"
+_RANGE_MARK = "outside declared range"
 
 
 class Extractor(Protocol):
@@ -29,6 +34,9 @@ class DocumentExtraction:
     # (chunk_id, error) for chunks that could not be extracted. Recorded, not
     # silently dropped, so partial output is honest about what is missing.
     failed_chunks: list[tuple[str, str]] = field(default_factory=list)
+
+    def domain_range_warnings(self) -> list[str]:
+        return [w for w in self.warnings if _DOMAIN_MARK in w or _RANGE_MARK in w]
 
     def all_entities(self) -> list[ExtractedEntity]:
         return [e for c in self.chunks for e in c.entities]
@@ -51,6 +59,7 @@ def extract_document(
     doc = DocumentExtraction(source_id=parsed.source_id, parse_id=parsed.parse_id)
     entity_names = ontology.entity_names()
     relation_names = ontology.relation_names()
+    constraints = {r.name: (r.domain, r.range) for r in ontology.relation_types}
 
     for chunk in chunks:
         try:
@@ -62,7 +71,7 @@ def extract_document(
             continue
         doc.chunks.append(result)
         doc.warnings.extend(
-            _validate(result, chunk.chunk_id, entity_names, relation_names)
+            _validate(result, chunk.chunk_id, entity_names, relation_names, constraints)
         )
     return doc
 
@@ -72,6 +81,7 @@ def _validate(
     chunk_id: str,
     entity_names: set[str],
     relation_names: set[str],
+    constraints: dict[str, tuple[list[str], list[str]]] | None = None,
 ) -> list[str]:
     warnings: list[str] = []
     for e in result.entities:
@@ -84,9 +94,31 @@ def _validate(
             warnings.append(
                 f"{chunk_id}: off-ontology relation type '{r.relation_type}'"
             )
+        elif constraints and r.relation_type in constraints:
+            domain, range_ = constraints[r.relation_type]
+            for t, allowed, mark, name in (
+                (r.source_type, domain, _DOMAIN_MARK, r.source_name),
+                (r.target_type, range_, _RANGE_MARK, r.target_name),
+            ):
+                if _outside(t, allowed):
+                    warnings.append(
+                        f"{chunk_id}: relation '{r.relation_type}' type '{t}' "
+                        f"(for '{name}') {mark} [{', '.join(allowed)}]"
+                    )
         for role, t in (("source", r.source_type), ("target", r.target_type)):
             if t and t not in entity_names:
                 warnings.append(
                     f"{chunk_id}: off-ontology {role} type '{t}' on relation '{r.relation_type}'"
                 )
     return warnings
+
+
+def _outside(entity_type: str, allowed: list[str]) -> bool:
+    """True if the type is outside a declared domain/range.
+
+    An empty list or a "*" entry means unconstrained. An empty entity type is
+    left to the existing checks, so it is not reported here.
+    """
+    if not allowed or "*" in allowed or not entity_type:
+        return False
+    return entity_type not in allowed
