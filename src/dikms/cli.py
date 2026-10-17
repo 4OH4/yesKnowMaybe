@@ -64,7 +64,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     p_validate = sub.add_parser(
-        "validate", help="re-check committed extraction output against the ontology (offline)"
+        "validate",
+        help="re-check committed extraction output against the ontology (offline)",
     )
     p_validate.add_argument("files", nargs="+", help="extraction output JSON file(s)")
     p_validate.add_argument("--ontology", default=DEFAULT_ONTOLOGY)
