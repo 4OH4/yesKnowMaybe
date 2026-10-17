@@ -31,8 +31,9 @@ Backend implementations subclass :class:`StorageAdapter`; they are selected by
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -43,10 +44,21 @@ from .schema import (
     EdgeDef,
     GraphSchema,
     NodeDef,
+    PropertyType,
     apply_defaults,
     normalise_properties,
     validate_properties,
 )
+
+
+def _complete(definition: NodeDef | EdgeDef, props: dict[str, Any]) -> dict[str, Any]:
+    """Every declared property, ``None`` where absent, so an upsert overwrites
+    fully. The vector property is left out unless given: it is written
+    separately (M2) and must not be cleared by a fact write."""
+    for prop in definition.properties:
+        if prop.type is not PropertyType.VECTOR:
+            props.setdefault(prop.name, None)
+    return props
 
 
 def _require_id(label: str, node_id: object) -> None:
@@ -129,6 +141,9 @@ class TraversalResult:
 
     ``steps`` is the ordered sequence of hops, so a multi-hop answer can be
     explained (and every edge on it traced back) rather than just asserted.
+    Each step's ``edge`` is recorded as stored (its ``ref.source`` and
+    ``ref.target``), whichever way it was followed; ``node`` is the node
+    arrived at.
     """
 
     start: NodeRef
@@ -136,18 +151,36 @@ class TraversalResult:
 
     @property
     def end(self) -> NodeRecord | None:
-        """The node reached, or ``None`` for a zero-hop result."""
+        """The node reached, or ``None`` for a zero-hop path (which
+        :meth:`StorageAdapter.traverse` never returns)."""
         return self.steps[-1].node if self.steps else None
 
     @property
     def hops(self) -> int:
         return len(self.steps)
 
+    def node_refs(self) -> tuple[NodeRef, ...]:
+        """Every node on the path, the start included, in order."""
+        return (self.start, *(step.node.ref for step in self.steps))
+
+    def is_simple(self) -> bool:
+        """True when no node repeats, as :meth:`StorageAdapter.traverse`
+        requires of every path it returns."""
+        refs = self.node_refs()
+        return len(set(refs)) == len(refs)
+
 
 @dataclass(frozen=True)
 class SimilarityHit:
+    """One vector-search result. ``score`` is a *similarity*: higher means
+    closer (cosine similarity, at most 1.0 for an identical direction)."""
+
     node: NodeRecord
     score: float
+
+
+class MissingNodeError(LookupError):
+    """An edge write named an endpoint node that is not in the store."""
 
 
 @dataclass(frozen=True)
@@ -223,6 +256,15 @@ class StorageAdapter(ABC):
         survives and :meth:`trace_back` returns all of them. Callers writing a
         fact must write both; the node alone is not a complete record of where
         the entity came from.
+
+        Overwriting is *full*: the backend writes every key of the dict
+        :meth:`prepare_node` returns, ``None`` included, and that dict holds
+        every declared property apart from the vector one. So an attribute
+        the new extraction does not carry (``nationality`` from source A,
+        absent from source B) is cleared rather than left behind under B's
+        provenance, which would misattribute it. The one exception is
+        ``embedding``: it is computed separately (M2), so it is written only
+        when passed, and left as stored otherwise.
         """
 
     @abstractmethod
@@ -246,7 +288,14 @@ class StorageAdapter(ABC):
         re-extracting the same relation from another source or chunk *adds* an
         edge rather than overwriting the earlier one's provenance. Re-running
         extraction over the same chunk updates that one edge in place, which is
-        what makes ingestion idempotent.
+        what makes ingestion idempotent. As with nodes, the update is full:
+        :meth:`prepare_edge` emits every declared property, ``None`` where
+        absent, and the backend writes all of them.
+
+        Both endpoint nodes must already exist; if either is missing the
+        backend raises :class:`MissingNodeError` and writes nothing, rather
+        than silently creating no edge (Kùzu's ``MATCH ... MERGE``) or a
+        dangling one. :meth:`require_endpoints` does that check.
 
         Returns the key of the edge written. A backend stores the edge from
         the returned ``ref.source`` to ``ref.target``, not from the arguments
@@ -273,11 +322,33 @@ class StorageAdapter(ABC):
     ) -> list[TraversalResult]:
         """Multi-hop traversal from ``start``.
 
-        ``edge_types``/``target_labels`` of ``None`` mean "any". Note that
-        ``same_as`` is just another edge type here: identity is *not* resolved
-        implicitly, and no backend may collapse ``same_as``-linked nodes —
-        traversing identity is a query-time decision made per edge
-        (``DECISIONS.md``: identity evaluated per-edge, not transitive closure).
+        Returns every **simple path** of 1 to ``max_hops`` hops from
+        ``start``: no node repeats on a path, ``start`` included
+        (:meth:`TraversalResult.is_simple`). Semantics every backend must
+        share:
+
+        * **No zero-hop result.** ``start`` itself is never returned as a
+          path; :meth:`get_node` reads it.
+        * **Parallel edges stay distinct.** Fact-bearing edges are stored
+          once per extraction (:class:`EdgeRef`), so two sources supporting
+          ``develops(BAE -> ASGARD)`` give two one-hop paths, one per edge,
+          each traceable to its own source. Deduplicating them is a
+          retrieval decision (M3), not the store's.
+        * ``edge_types`` filters every hop; ``target_labels`` filters the
+          path's end node only (intermediate nodes may have any label).
+          ``None`` means "any". Unknown types or labels raise ``KeyError``.
+        * ``direction`` applies to every hop; with ``BOTH`` an edge may be
+          followed either way. Each step records the edge as stored.
+        * Paths are ordered by hop count, shortest first (order within one
+          hop count is unspecified), and ``limit`` keeps the first ``limit``
+          of them. ``max_hops`` must be at least 1 and ``limit``, if given,
+          at least 1; :meth:`check_traversal_args` checks all of this.
+
+        Note that ``same_as`` is just another edge type here: identity is
+        *not* resolved implicitly, and no backend may collapse
+        ``same_as``-linked nodes — traversing identity is a query-time
+        decision made per edge (``DECISIONS.md``: identity evaluated
+        per-edge, not transitive closure).
         """
 
     @abstractmethod
@@ -291,9 +362,19 @@ class StorageAdapter(ABC):
     ) -> list[SimilarityHit]:
         """Vector similarity search over ``label``'s embedding property.
 
-        ``embedding`` must be ``self.schema.vector_dimension`` wide. In M1 this
-        is only ever exercised with stub vectors — real Vertex embeddings need
-        credentials and are an M2 concern (``DECISIONS.md``: embeddings).
+        ``embedding`` must be ``self.schema.vector_dimension`` wide and finite
+        (:meth:`check_query_embedding`). In M1 this is only ever exercised
+        with stub vectors — real Vertex embeddings need credentials and are
+        an M2 concern (``DECISIONS.md``: embeddings).
+
+        ``SimilarityHit.score`` is the **cosine similarity**, so higher is
+        closer. Both backends' vector indexes report cosine *distance*, so a
+        backend returns ``1 - distance``. ``min_score`` is an inclusive lower
+        bound on that similarity (hits with ``score >= min_score`` are kept).
+        Hits are ordered by score, highest first, at most ``limit`` of them;
+        nodes with no embedding are never returned.
+        :meth:`rank_similarity_hits` applies the bound, the order and the
+        limit, so backends share them.
         """
 
     @abstractmethod
@@ -366,7 +447,7 @@ class StorageAdapter(ABC):
             )
         props[definition.primary_key] = node_id
         validate_properties(definition, props)
-        return props
+        return _complete(definition, props)
 
     def prepare_edge(
         self,
@@ -403,7 +484,79 @@ class StorageAdapter(ABC):
                         f"{edge_type}: source_id={props['source_id']!r} does not "
                         f"match the Source endpoint {endpoint.id!r}"
                     )
-        return self.edge_ref(edge_type, source, target, props), props
+        return self.edge_ref(edge_type, source, target, props), _complete(
+            definition, props
+        )
+
+    def require_endpoints(self, source: NodeRef, target: NodeRef) -> None:
+        """Raise :class:`MissingNodeError` unless both endpoints are stored.
+
+        The default reads each with :meth:`get_node`; a backend may override
+        it with a cheaper check, or do the check atomically with the write,
+        so long as a missing endpoint still raises before anything is written.
+        """
+        for endpoint in (source, target):
+            if self.get_node(endpoint) is None:
+                raise MissingNodeError(
+                    f"{endpoint.label} {endpoint.id!r} does not exist; write the "
+                    f"node before an edge that touches it"
+                )
+
+    # -- shared read helpers --------------------------------------------
+
+    def check_query_embedding(self, label: str, embedding: Sequence[float]) -> None:
+        """Check a :meth:`similar_nodes` query before it reaches the index:
+        the label has a vector property, and the query vector is that wide
+        and finite."""
+        prop = self.schema.node(label).vector_property()
+        if prop is None:
+            raise ValueError(f"{label} has no vector property to search")
+        if len(embedding) != prop.dimension:
+            raise ValueError(
+                f"query embedding has {len(embedding)} dimensions, expected "
+                f"{prop.dimension}"
+            )
+        if not all(
+            isinstance(x, (int, float))
+            and not isinstance(x, bool)
+            and math.isfinite(x)
+            for x in embedding
+        ):
+            raise ValueError("query embedding must be finite numbers")
+
+    @staticmethod
+    def rank_similarity_hits(
+        hits: Iterable[SimilarityHit],
+        *,
+        limit: int,
+        min_score: float | None = None,
+    ) -> list[SimilarityHit]:
+        """Apply :meth:`similar_nodes`' shared result rules to raw hits:
+        drop any below ``min_score`` (inclusive lower bound on similarity),
+        order by score highest first, and keep at most ``limit``."""
+        if limit < 1:
+            raise ValueError(f"limit must be at least 1, got {limit}")
+        kept = [h for h in hits if min_score is None or h.score >= min_score]
+        kept.sort(key=lambda h: h.score, reverse=True)
+        return kept[:limit]
+
+    def check_traversal_args(
+        self,
+        *,
+        edge_types: Sequence[str] | None,
+        max_hops: int,
+        target_labels: Sequence[str] | None,
+        limit: int | None,
+    ) -> None:
+        """Validate :meth:`traverse` arguments the same way in every backend."""
+        if max_hops < 1:
+            raise ValueError(f"max_hops must be at least 1, got {max_hops}")
+        if limit is not None and limit < 1:
+            raise ValueError(f"limit must be at least 1, got {limit}")
+        for edge_type in edge_types or ():
+            self.schema.edge(edge_type)  # KeyError naming the unknown type
+        for label in target_labels or ():
+            self.schema.node(label)  # KeyError naming the unknown label
 
     def edge_ref(
         self,

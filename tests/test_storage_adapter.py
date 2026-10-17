@@ -19,9 +19,11 @@ from dikms.storage import (
     EdgeRecord,
     EdgeRef,
     GraphSchema,
+    MissingNodeError,
     NodeRecord,
     NodeRef,
     PathStep,
+    PropertyType,
     ProvenanceHit,
     SchemaViolation,
     SimilarityHit,
@@ -33,25 +35,37 @@ from dikms.storage.schema import SOURCE_LABEL
 
 
 class StubAdapter(StorageAdapter):
-    """Minimal concrete adapter: records writes, answers nothing clever."""
+    """Minimal concrete adapter: records writes, answers nothing clever.
 
-    def __init__(self, schema: GraphSchema) -> None:
+    Writes merge into what is stored, as Kùzu's ``MERGE ... SET`` and
+    Spanner's ``insert_or_update`` do: a key the prepared dict leaves out
+    keeps its old value. That makes the full-overwrite rule observable.
+    Endpoint existence is checked only with ``require_existing_endpoints``,
+    so the many tests of edge validation need not create nodes first.
+    """
+
+    def __init__(
+        self, schema: GraphSchema, *, require_existing_endpoints: bool = False
+    ) -> None:
         super().__init__(schema)
         self.nodes: dict[tuple[str, str], dict[str, Any]] = {}
         self.edges: dict[EdgeRef, dict[str, Any]] = {}
         self.initialised = False
+        self.require_existing_endpoints = require_existing_endpoints
 
     def initialise_schema(self) -> None:
         self.initialised = True
 
     def upsert_node(self, label, node_id, properties):
         props = self.prepare_node(label, node_id, properties)
-        self.nodes[(label, node_id)] = props
+        self.nodes.setdefault((label, node_id), {}).update(props)
         return NodeRef(label, node_id)
 
     def upsert_edge(self, edge_type, source, target, properties):
         ref, props = self.prepare_edge(edge_type, source, target, properties)
-        self.edges[ref] = props  # keyed exactly as the schema says
+        if self.require_existing_endpoints:
+            self.require_endpoints(ref.source, ref.target)
+        self.edges.setdefault(ref, {}).update(props)  # keyed as the schema says
         return ref
 
     def get_node(self, ref):
@@ -439,6 +453,158 @@ def test_unknown_label_or_edge_type_is_reported(adapter: StubAdapter) -> None:
         adapter.upsert_edge(
             "wobbles", NodeRef("Programme", "a"), NodeRef("Programme", "b"), {}
         )
+
+
+# -- upsert semantics -------------------------------------------------------
+
+
+def _organisation(node_id: str, source_id: str, **attributes: Any) -> dict[str, Any]:
+    props = dict(_programme(node_id, "BAE Systems"), source_id=source_id)
+    return {**props, **attributes}
+
+
+def test_a_node_upsert_clears_attributes_the_new_extraction_lacks(
+    adapter: StubAdapter,
+) -> None:
+    """The reviewer's probe: nationality from source A must not survive under
+    source B's provenance block, even on a backend that merges columns."""
+    ref = NodeRef("Organisation", "o:bae")
+    first = _organisation(ref.id, "src-a", nationality="UK")
+    adapter.upsert_node(ref.label, ref.id, first)
+    adapter.upsert_node(ref.label, ref.id, _organisation(ref.id, "src-b"))
+    stored = adapter.get_node(ref).properties
+    assert stored["source_id"] == "src-b"
+    assert stored["nationality"] is None
+
+
+def test_prepare_emits_every_declared_property_except_the_vector(
+    adapter: StubAdapter, schema: GraphSchema
+) -> None:
+    """For every fact-bearing label and every subset of its optional
+    attributes: the prepared dict names every declared property apart from
+    ``embedding``, so a backend that writes the dict overwrites fully."""
+    base = _programme("n:1", "N")
+    for node in schema.nodes:
+        if node.label == SOURCE_LABEL:
+            continue
+        expected = set(node.property_names()) - {"embedding"}
+        # The ontology attributes: the optional facts a later write may lack.
+        attributes = [
+            p for p in node.properties if not p.required and p.name not in base
+            and p.type is not PropertyType.VECTOR
+        ]
+        for r in range(len(attributes) + 1):
+            for subset in itertools.combinations(attributes, r):
+                given = {p.name: p.values[0] if p.values else "x" for p in subset}
+                props = adapter.prepare_node(node.label, "n:1", dict(base, **given))
+                assert set(props) == expected, (node.label, sorted(given))
+                for name in expected - set(given) - set(base):
+                    assert props[name] is None, (node.label, name)
+
+
+def test_a_fact_write_leaves_a_stored_embedding_alone(adapter: StubAdapter) -> None:
+    """The embedding is computed separately (M2); re-writing the fact must not
+    clear it, while an explicit embedding is written as given."""
+    width = adapter.schema.vector_dimension
+    props = _programme("p:asgard", "ASGARD")
+    adapter.upsert_node("Programme", "p:asgard", dict(props, embedding=[0.5] * width))
+    adapter.upsert_node("Programme", "p:asgard", props)
+    stored = adapter.nodes[("Programme", "p:asgard")]
+    assert stored["embedding"] == [0.5] * width
+
+
+def test_an_edge_upsert_also_overwrites_fully(adapter: StubAdapter) -> None:
+    org, prog = NodeRef("Organisation", "o:bae"), NodeRef("Programme", "p:asgard")
+    props = provenance_properties(_provenance())
+    ref = adapter.upsert_edge("develops", org, prog, dict(props, confidence=0.4))
+    adapter.upsert_edge("develops", org, prog, props)
+    assert adapter.edges[ref]["confidence"] is None
+
+
+def test_an_edge_to_a_missing_node_raises_and_writes_nothing(
+    schema: GraphSchema,
+) -> None:
+    adapter = StubAdapter(schema, require_existing_endpoints=True)
+    org, prog = NodeRef("Organisation", "o:bae"), NodeRef("Programme", "p:asgard")
+    props = provenance_properties(_provenance())
+    with pytest.raises(MissingNodeError, match="o:bae"):
+        adapter.upsert_edge("develops", org, prog, props)
+    adapter.upsert_node(org.label, org.id, _organisation(org.id, "src-a"))
+    with pytest.raises(MissingNodeError, match="p:asgard"):
+        adapter.upsert_edge("develops", org, prog, props)
+    assert adapter.edges == {}
+    adapter.upsert_node(prog.label, prog.id, _programme(prog.id, "ASGARD"))
+    adapter.upsert_edge("develops", org, prog, props)
+    assert len(adapter.edges) == 1
+
+
+# -- read helpers -----------------------------------------------------------
+
+
+def _hit(node_id: str, score: float) -> SimilarityHit:
+    return SimilarityHit(NodeRecord(NodeRef("Programme", node_id)), score)
+
+
+def test_similarity_hits_are_ranked_highest_first_with_an_inclusive_floor() -> None:
+    """Over a grid of scores, limits and floors: the result is exactly the
+    hits with score >= min_score, highest first, truncated to limit."""
+    scores = [0.9, -0.2, 0.5, 0.5, 1.0, 0.0, 0.75]
+    hits = [_hit(f"p:{i}", s) for i, s in enumerate(scores)]
+    for limit in (1, 2, 3, 10):
+        for floor in (None, -1.0, 0.0, 0.5, 0.75, 1.0, 1.01):
+            ranked = StorageAdapter.rank_similarity_hits(
+                hits, limit=limit, min_score=floor
+            )
+            kept = sorted(
+                (s for s in scores if floor is None or s >= floor), reverse=True
+            )[:limit]
+            assert [h.score for h in ranked] == kept, (limit, floor)
+    with pytest.raises(ValueError, match="limit"):
+        StorageAdapter.rank_similarity_hits(hits, limit=0)
+
+
+def test_a_query_embedding_is_checked(adapter: StubAdapter) -> None:
+    width = adapter.schema.vector_dimension
+    adapter.check_query_embedding("Programme", [0.1] * width)
+    for bad in ([0.1] * (width - 1), [float("nan")] * width, [True] * width):
+        with pytest.raises(ValueError):
+            adapter.check_query_embedding("Programme", bad)
+    with pytest.raises(ValueError, match="no vector"):
+        adapter.check_query_embedding(SOURCE_LABEL, [0.1] * width)
+
+
+def test_traversal_arguments_are_checked(adapter: StubAdapter) -> None:
+    ok = {"edge_types": None, "max_hops": 1, "target_labels": None, "limit": None}
+    adapter.check_traversal_args(**ok)
+    adapter.check_traversal_args(
+        **dict(ok, edge_types=["develops", "same_as"], target_labels=["Programme"])
+    )
+    for bad, error in (
+        ({"max_hops": 0}, ValueError),
+        ({"limit": 0}, ValueError),
+        ({"edge_types": ["wobbles"]}, KeyError),
+        ({"target_labels": ["Widget"]}, KeyError),
+    ):
+        with pytest.raises(error):
+            adapter.check_traversal_args(**dict(ok, **bad))
+
+
+def test_a_path_that_revisits_a_node_is_not_simple() -> None:
+    """``traverse`` returns simple paths only; ``is_simple`` is the check,
+    exhaustive over every 1- to 3-hop walk on three nodes."""
+    nodes = [NodeRef("Programme", n) for n in ("a", "b", "c")]
+    start = nodes[0]
+    for hops in (1, 2, 3):
+        for walk in itertools.product(nodes, repeat=hops):
+            prev, steps = start, []
+            for node in walk:
+                edge = EdgeRecord(EdgeRef("part_of", prev, node))
+                steps.append(PathStep(edge, NodeRecord(node)))
+                prev = node
+            result = TraversalResult(start, tuple(steps))
+            sequence = (start, *walk)
+            assert result.node_refs() == sequence
+            assert result.is_simple() == (len(set(sequence)) == len(sequence))
 
 
 # -- result types -----------------------------------------------------------
