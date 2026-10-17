@@ -72,7 +72,8 @@ def write_review_markdown(doc: DocumentExtraction, path: str | Path) -> Path:
         f"- Parse: `{doc.parse_id}`",
         f"- Entities: {len(doc.all_entities())} · "
         f"Relations: {len(doc.all_relations())} · "
-        f"Proposals: {len(doc.all_proposals())} · "
+        f"Proposals: {len(doc.all_proposals())} "
+        f"({len(group_proposals(doc.all_proposals()))} unique) · "
         f"Warnings: {len(doc.warnings)}",
         "",
         "> Annotate inline (✓/✗/note) — this sheet seeds the eval set.",
@@ -112,15 +113,23 @@ def write_review_markdown(doc: DocumentExtraction, path: str | Path) -> Path:
                 f"- **{g.kind}**: {g.name} — {first.description} "
                 f"(proposed ×{g.count} in {len(chunks)} chunk(s): {', '.join(chunks)})"
             )
-            for justification in dict.fromkeys(pr.justification for pr in g.proposals):
-                lines.append(f"  - justification: {justification}")
-            seen: set[tuple[str, str]] = set()
+            seen: set[tuple[str, str, str, str]] = set()
             for pr in g.proposals:
-                key = (pr.provenance.chunk_id, pr.provenance.supporting_quote)
+                key = (
+                    pr.provenance.chunk_id,
+                    pr.description,
+                    pr.justification,
+                    pr.provenance.supporting_quote,
+                )
                 if key in seen:
                     continue
                 seen.add(key)
-                lines.append(f"  - quote ({key[0]}): “{key[1]}”")
+                head = f"  - {key[0]}"
+                if pr.description != first.description:
+                    head += f" · description: {pr.description}"
+                lines.append(head)
+                lines.append(f"    - justification: {pr.justification}")
+                lines.append(f"    - quote: “{key[3]}”")
 
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return p

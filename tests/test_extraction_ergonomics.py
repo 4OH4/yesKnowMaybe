@@ -114,3 +114,19 @@ def test_progress_reports_each_chunk_and_failures():
     # No callback: same result, nothing required.
     again = extract_document(_parsed(), ont, _Stub(), target_chars=100, max_chars=150)
     assert len(again.chunks) == len(doc.chunks)
+
+
+def test_review_sheet_shows_every_distinct_description(tmp_path):
+    props = [
+        TypeProposal("relation", "funds", f"desc {i}", f"why {i}", _prov(f"c{i}", f"quote {i}"))
+        for i in range(4)
+    ]
+    # Duplicate of the first occurrence: collapses.
+    props.append(TypeProposal("relation", "funds", "desc 0", "why 0", _prov("c0", "quote 0")))
+    doc = _doc([[p] for p in props])
+    md = write_review_markdown(doc, tmp_path / "r.md").read_text(encoding="utf-8")
+    for i in range(4):
+        assert f"desc {i}" in md
+        assert f"quote {i}" in md
+        assert f"why {i}" in md
+    assert "Proposals: 5 (1 unique)" in md
