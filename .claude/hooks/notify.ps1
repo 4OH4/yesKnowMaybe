@@ -1,8 +1,8 @@
 # Desktop notification for Claude Code Notification hook events.
 #
-# Wired up in .claude/settings.json so that a supervisor loop or a background
-# implementation agent needing input surfaces without anyone watching the
-# terminal (see AUTOMATION.md — "Checking in"). Reads the hook payload as JSON
+# Wired up in .claude/settings.json so that the lead session or a background
+# worker/reviewer agent needing input, or finishing, surfaces without anyone
+# watching the terminal (see AUTOMATION.md). Reads the hook payload as JSON
 # on stdin; falls back to a generic message if the payload is unreadable.
 
 $ErrorActionPreference = 'SilentlyContinue'
