@@ -425,6 +425,33 @@ def test_an_unmodelled_structural_relation_fails_loudly(
         build_schema(extended, config.require_embedding().dimension)
 
 
+@pytest.mark.parametrize("side", ["domain", "range"])
+@pytest.mark.parametrize("bad", ["Programmme", "Source", "programme"])
+def test_an_unknown_label_in_a_relation_fails_loudly(
+    ontology: Ontology, config, side: str, bad: str
+) -> None:
+    """A typo in ontology.yaml must fail at schema build, naming the relation,
+    not later as a DDL error in one backend. ``Source`` is refused too: it is
+    not a fact-bearing endpoint for a substantive relation."""
+    relations = []
+    for r in ontology.relation_types:
+        if r.name == "develops":
+            r = RelationType(
+                name=r.name,
+                description=r.description,
+                domain=[*r.domain, bad] if side == "domain" else list(r.domain),
+                range=[*r.range, bad] if side == "range" else list(r.range),
+            )
+        relations.append(r)
+    broken = Ontology(
+        version=ontology.version,
+        entity_types=list(ontology.entity_types),
+        relation_types=relations,
+    )
+    with pytest.raises(ValueError, match=f"develops.*{bad}.*{side}"):
+        build_schema(broken, config.require_embedding().dimension)
+
+
 def test_defaults_are_declared_for_the_recorded_status_fields(
     schema: GraphSchema,
 ) -> None:

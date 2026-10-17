@@ -392,15 +392,25 @@ def _vector_property(dimension: int) -> PropertyDef:
 
 
 def _resolve_labels(
-    names: Iterable[str], all_labels: tuple[str, ...]
+    relation: str, side: str, names: Iterable[str], all_labels: tuple[str, ...]
 ) -> tuple[str, ...]:
-    """Expand the ontology's ``*`` wildcard into concrete node labels."""
+    """Expand the ontology's ``*`` wildcard into concrete node labels.
+
+    Any other name must be one of ``all_labels``. A typo in a relation's
+    domain or range in ``config/ontology.yaml`` therefore fails here, naming
+    the relation, rather than as a DDL error in whichever backend runs first.
+    """
     resolved: list[str] = []
     for name in names:
         if name == ANY:
             resolved.extend(all_labels)
-        else:
+        elif name in all_labels:
             resolved.append(name)
+        else:
+            raise ValueError(
+                f"Relation '{relation}' names unknown label {name!r} in its "
+                f"{side}. Known entity labels: {', '.join(all_labels)}"
+            )
     seen: dict[str, None] = {}
     for label in resolved:
         seen.setdefault(label, None)
@@ -553,8 +563,12 @@ def build_schema(ontology: Ontology, vector_dimension: int) -> GraphSchema:
             source_labels: tuple[str, ...] = (SOURCE_LABEL,)
             target_labels: tuple[str, ...] = entity_labels
         else:
-            source_labels = _resolve_labels(relation.domain or [ANY], entity_labels)
-            target_labels = _resolve_labels(relation.range or [ANY], entity_labels)
+            source_labels = _resolve_labels(
+                relation.name, "domain", relation.domain or [ANY], entity_labels
+            )
+            target_labels = _resolve_labels(
+                relation.name, "range", relation.range or [ANY], entity_labels
+            )
             # Substantive extracted relations: fully provenanced, plus the
             # extraction confidence the review queue ranks on.
             properties = PROVENANCE_PROPERTIES + (

@@ -19,7 +19,7 @@ Two things beyond a bare CRUD surface are here on purpose:
   ("the adapter's migrations", ``ARCHITECTURE.md`` → Knowledge store), not
   provisioned by Terraform, so realising a :class:`~dikms.storage.schema.GraphSchema`
   is part of the adapter contract.
-* :meth:`StorageAdapter.validate_node` / :meth:`~StorageAdapter.validate_edge`
+* :meth:`StorageAdapter.prepare_node` / :meth:`~StorageAdapter.prepare_edge`
   — concrete, shared helpers so every backend rejects a write missing its
   provenance identically. Traceability is enforced above the backend, not
   re-implemented (and potentially relaxed) in each one.
