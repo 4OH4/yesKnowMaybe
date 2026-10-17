@@ -416,33 +416,62 @@ def align_document(
 
     by_id = {c.chunk_id: c for c in chunks}
     report = AlignmentReport(source_id=doc.source_id, parse_id=doc.parse_id)
+    facts = [
+        (kind, item.provenance)
+        for kind, items in (
+            ("entity", doc.all_entities()),
+            ("relation", doc.all_relations()),
+            ("proposal", doc.all_proposals()),
+        )
+        for item in items
+    ]
 
-    for kind, items in (
-        ("entity", doc.all_entities()),
-        ("relation", doc.all_relations()),
-        ("proposal", doc.all_proposals()),
-    ):
-        for item in items:
-            _align_fact(item.provenance, kind, by_id, parsed, config, report)
+    # Check every fact's chunk before touching any of them, so a drift error
+    # leaves the document exactly as it was loaded.
+    for _, prov in facts:
+        _check_chunk(prov, by_id)
+    for kind, prov in facts:
+        _align_fact(prov, kind, by_id[prov.chunk_id], parsed, config, report)
     return report
+
+
+def _check_chunk(prov: Provenance, by_id: dict[str, Chunk]) -> None:
+    """Fail unless re-chunking reproduced the chunk this fact was extracted from.
+
+    Chunk ids are ordinals (``<parse_id>::NNNN``), so a re-chunk with different
+    ``chunking`` parameters keeps most ids while moving their windows. Searching
+    a moved window would place spans outside the text extraction actually saw.
+    The id alone cannot detect that; the chunk's ``section_refs`` (the page and
+    section labels it covers, copied into provenance at extraction time) are the
+    only record of the original window, so they must match too.
+    """
+    chunk = by_id.get(prov.chunk_id)
+    if chunk is None:
+        problem = "is not in the re-chunked document"
+    elif list(chunk.section_refs) != list(prov.section_refs):
+        problem = (
+            f"now covers {chunk.section_refs!r}, but extraction recorded "
+            f"{prov.section_refs!r}"
+        )
+    else:
+        return
+    raise RuntimeError(
+        f"chunk drift: chunk {prov.chunk_id!r} {problem}. The parse matches, so "
+        "the chunks were not rebuilt as extraction saw them: the `chunking` "
+        "parameters in config/extraction.yaml (or the chunker itself) have "
+        "probably changed since extraction ran. Restore them or re-run "
+        "extraction; nothing has been aligned."
+    )
 
 
 def _align_fact(
     prov: Provenance,
     kind: str,
-    by_id: dict[str, Chunk],
+    chunk: Chunk,
     parsed: ParsedDocument,
     config: AlignmentConfig,
     report: AlignmentReport,
 ) -> None:
-    chunk = by_id.get(prov.chunk_id)
-    if chunk is None:
-        raise RuntimeError(
-            f"chunk {prov.chunk_id!r} is not in the re-chunked document. The "
-            "parse matches, so the chunking parameters must differ from the ones "
-            "extraction ran with (see `chunking` in config/extraction.yaml)."
-        )
-
     match = align_quote(parsed, chunk, prov.supporting_quote, config)
     if match is None:
         # Document/section provenance stands; only the exact span is missing.

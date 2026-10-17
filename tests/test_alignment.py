@@ -20,6 +20,7 @@ from dikms.alignment import (
     align_quote,
     normalise,
 )
+from dikms.chunking import chunk_document
 from dikms.config import AlignmentConfig
 from dikms.extraction.pipeline import DocumentExtraction
 from dikms.models import (
@@ -32,7 +33,9 @@ from dikms.models import (
     Provenance,
     SourceFormat,
     Span,
+    StructuralUnit,
     TypeProposal,
+    UnitKind,
     parse_id_for,
 )
 
@@ -99,10 +102,12 @@ def make_chunks(parsed: ParsedDocument) -> list[Chunk]:
 
 
 def provenance(quote: str, chunk_id: str) -> Provenance:
+    # Extraction copies the chunk's section refs into provenance; mirror
+    # `make_chunks` so alignment's chunk-drift check sees the chunk unchanged.
     return Provenance(
         source_id="test-source",
         chunk_id=chunk_id,
-        section_refs=["page 1"],
+        section_refs=["page 2"] if chunk_id.endswith("::0001") else ["page 1"],
         supporting_quote=quote,
         extraction_model="test-model",
     )
@@ -543,6 +548,98 @@ def test_unknown_chunk_id_fails_loudly():
     chunks = make_chunks(parsed)[:1]  # chunk 0001 missing
     with pytest.raises(RuntimeError, match="not in the re-chunked document"):
         align_document(doc, parsed, chunks, CONFIG)
+    assert_untouched(doc)
+
+
+def assert_untouched(doc: DocumentExtraction) -> None:
+    assert all(
+        p.alignment_status is AlignmentStatus.PENDING and p.span is None
+        for p in all_provenance(doc)
+    )
+
+
+def _paged_document() -> ParsedDocument:
+    """A multi-page parse, so different chunk sizes give different windows."""
+    paragraphs = [
+        f"Paragraph {i} describes the Future Air Dominance System programme "
+        f"in some detail, with distinct wording number {i}."
+        for i in range(24)
+    ]
+    text = "\n\n".join(paragraphs)
+    units = []
+    pos = 0
+    for i, para in enumerate(paragraphs):
+        # Two paragraphs per page.
+        if i % 2 == 0:
+            page_start = pos
+        pos += len(para)
+        if i % 2 == 1:
+            units.append(
+                StructuralUnit(UnitKind.PAGE, str(i // 2 + 1), page_start, pos)
+            )
+        pos += 2
+    return ParsedDocument(
+        source_id="test-source",
+        fmt=SourceFormat.PDF,
+        parser="test-parser-1.0",
+        parse_id=PARSE_ID,
+        text=text,
+        units=units,
+    )
+
+
+def _extract_from(chunks: list[Chunk], parsed: ParsedDocument) -> DocumentExtraction:
+    """One fact per chunk, quoting that chunk's last paragraph, with provenance
+    copied from the chunk as the real extraction client does."""
+    out = []
+    for c in chunks:
+        quote = c.text.rsplit("\n\n", 1)[-1]
+        prov = Provenance(
+            source_id=parsed.source_id,
+            chunk_id=c.chunk_id,
+            section_refs=list(c.section_refs),
+            supporting_quote=quote,
+            extraction_model="test-model",
+        )
+        out.append(
+            ChunkExtraction(
+                chunk_id=c.chunk_id,
+                entities=[
+                    ExtractedEntity(entity_type="Programme", name="FADS", provenance=prov)
+                ],
+            )
+        )
+    return DocumentExtraction(
+        source_id=parsed.source_id, parse_id=parsed.parse_id, chunks=out
+    )
+
+
+def test_unchanged_rechunk_passes_the_drift_check():
+    parsed = _paged_document()
+    chunks = chunk_document(parsed, target_chars=400, max_chars=800)
+    doc = _extract_from(chunks, parsed)
+    report = align_document(doc, parsed, chunks, CONFIG)
+    assert report.total_aligned == report.total == len(chunks)
+
+
+@pytest.mark.parametrize("realign_target", [250, 600, 4000])
+def test_rechunking_at_a_different_target_size_fails_loudly(realign_target):
+    """Chunk ids are ordinals, so a smaller target keeps every original id but
+    moves its window, and a larger one removes ids. Either way alignment must
+    refuse rather than search text extraction never saw."""
+    parsed = _paged_document()
+    extracted_with = chunk_document(parsed, target_chars=400, max_chars=800)
+    doc = _extract_from(extracted_with, parsed)
+
+    realigned_with = chunk_document(parsed, target_chars=realign_target, max_chars=8000)
+    if realign_target < 400:
+        # The case the id check alone misses: every original id still exists.
+        assert {c.chunk_id for c in extracted_with} <= {
+            c.chunk_id for c in realigned_with
+        }
+    with pytest.raises(RuntimeError, match="chunk drift"):
+        align_document(doc, parsed, realigned_with, CONFIG)
+    assert_untouched(doc)
 
 
 def test_report_counts_ambiguity_and_methods():
