@@ -78,8 +78,10 @@ Two problems this is meant to solve:
 - **`DECISIONS.md`** — log of key architectural decisions and why they were
   made, so later work doesn't re-litigate settled questions.
 - **`ROADMAP.md`** — staged milestones, what's in v1 vs deferred.
-- **`BACKLOG.md`** — one-line backlog items, expanded conversationally when
-  briefing Claude Code on a specific piece of work.
+- **`BACKLOG.md`** — one-line intent for each milestone, before it is written
+  up as GitHub issues.
+- **`AUTOMATION.md`** — how the build runs: GitHub Issues and a Project board,
+  driven by a lead agent with worker and reviewer agents.
 
 ## Confidentiality
 

@@ -1,8 +1,11 @@
 # Backlog
 
-One-line items — intent and rough constraint only. Expand conversationally
-with Claude Code when actually briefing a piece of work; don't treat these
-as specs.
+One-line items — intent and rough constraint only; don't treat these as
+specs. Once a milestone's work is written up as GitHub issues, the issues and
+the Project board own its detail and status (see `AUTOMATION.md`), and these
+lines are only ticked off when the milestone closes. **M1 is now tracked as
+issues #2–#14** under the `M1` milestone; the lines below are its original
+intent.
 
 ## M0 — complete
 All items done. Outcome: parsing/chunking/extraction pipeline built and run
