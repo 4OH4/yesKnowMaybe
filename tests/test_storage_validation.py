@@ -10,12 +10,14 @@ exhaustive small grids or a fixed-seed generator.
 
 from __future__ import annotations
 
+import itertools
 import random
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 import pytest
 
+from dikms.models import AlignmentStatus, Provenance, Span
 from dikms.storage import (
     EdgeDef,
     GraphSchema,
@@ -26,6 +28,7 @@ from dikms.storage import (
     normalise_properties,
     normalise_timestamp,
     parse_timestamp,
+    provenance_properties,
     validate_properties,
 )
 
@@ -226,3 +229,69 @@ def test_normalise_properties_rewrites_every_timestamp_and_nothing_else(
             else:
                 assert out[prop.name] == given[prop.name], prop.name
         validate_properties(definition, out)
+
+
+# -- exact spans are verified-only ------------------------------------------
+
+SPAN_STATUSES = tuple(s.value for s in AlignmentStatus)
+PARSE_IDS = (None, "", " ", "parse-1")
+OFFSETS = (None, -1, 0, 3, 7)
+
+
+def _span_should_be_accepted(
+    status: str, parse_id: str | None, start: int | None, end: int | None
+) -> bool:
+    """The rule, written independently of the validator."""
+    fields = (parse_id, start, end)
+    if all(f is None for f in fields):
+        return status != AlignmentStatus.ALIGNED.value
+    if any(f is None for f in fields):
+        return False  # a partial span
+    return (
+        status == AlignmentStatus.ALIGNED.value
+        and bool(parse_id.strip())
+        and 0 <= start <= end
+    )
+
+
+def test_span_fields_are_all_or_nothing_and_aligned_only(
+    schema: GraphSchema,
+) -> None:
+    """Exhaustive over status x parse id x start x end (300 cases), on every
+    definition that carries the span group: the validator accepts exactly the
+    combinations the rule allows, so no unverified, partial or inverted
+    offset can be stored as if it were a confirmed span."""
+    bearing = [d for d in _definitions(schema) if d.property("alignment_status")]
+    assert bearing, "no definition carries the span group"
+    for definition in bearing:
+        base = valid_properties(definition, schema.vector_dimension)
+        for status, parse_id, start, end in itertools.product(
+            SPAN_STATUSES, PARSE_IDS, OFFSETS, OFFSETS
+        ):
+            props = dict(
+                base,
+                alignment_status=status,
+                span_parse_id=parse_id,
+                span_start=start,
+                span_end=end,
+            )
+            if _span_should_be_accepted(status, parse_id, start, end):
+                validate_properties(definition, props)
+            else:
+                with pytest.raises(SchemaViolation, match="span"):
+                    validate_properties(definition, props)
+
+
+def test_an_aligned_span_from_the_model_is_accepted(schema: GraphSchema) -> None:
+    node = schema.node("Programme")
+    prov = Provenance(
+        source_id="s",
+        chunk_id="c",
+        section_refs=["p. 1"],
+        supporting_quote="q",
+        extraction_model="m",
+        extracted_at=VALID_TIMESTAMP,
+        alignment_status=AlignmentStatus.ALIGNED,
+        span=Span(parse_id="parse-1", start=10, end=10),  # zero width is allowed
+    )
+    validate_properties(node, {"id": "p:x", "name": "X", **provenance_properties(prov)})

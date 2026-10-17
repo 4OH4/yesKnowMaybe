@@ -24,7 +24,8 @@ the field names of :class:`dikms.models.Provenance` — no parallel vocabulary:
 * Exact-span fields, present only when alignment verified them:
   ``span_parse_id``, ``span_start``, ``span_end`` (nullable). ``Span`` is
   flattened into three properties because neither backend stores nested
-  records on a property.
+  records on a property. They are all-or-nothing, set exactly when
+  ``alignment_status`` is ``aligned``, with ``0 <= span_start <= span_end``.
 * ``alignment_status`` belongs to the span group but is itself **required**,
   defaulting to ``pending``. ``ARCHITECTURE.md`` requires a failed alignment to
   be *recorded* rather than silently absent — "which facts have exact-span
@@ -788,3 +789,48 @@ def validate_properties(
                     f"{name}.{key}: expected {prop.dimension} dimensions, "
                     f"got {len(value)}"
                 )
+
+    if "alignment_status" in declared:
+        _check_span(name, properties)
+
+
+#: The flattened :class:`dikms.models.Span`; all present or all absent.
+SPAN_FIELDS: tuple[str, ...] = ("span_parse_id", "span_start", "span_end")
+
+
+def _check_span(name: str, properties: Mapping[str, Any]) -> None:
+    """The exact span is verified-only (ARCHITECTURE.md: span-level provenance).
+
+    * The three span fields are all present or all absent — a partial span is
+      not a span.
+    * They are present exactly when ``alignment_status`` is ``aligned``. A
+      ``pending`` or ``unresolved`` fact with offsets would be an unverified
+      offset stored as if confirmed; an ``aligned`` fact with none would claim
+      a verification that left nothing to check.
+    * ``0 <= span_start <= span_end`` and ``span_parse_id`` is non-empty.
+    """
+    present = [f for f in SPAN_FIELDS if properties.get(f) is not None]
+    aligned = properties.get("alignment_status") == AlignmentStatus.ALIGNED.value
+    if present and len(present) != len(SPAN_FIELDS):
+        absent = sorted(set(SPAN_FIELDS) - set(present))
+        raise SchemaViolation(f"{name}: partial span, {absent} missing")
+    if aligned and not present:
+        raise SchemaViolation(
+            f"{name}: alignment_status is 'aligned' but no span is recorded"
+        )
+    if present and not aligned:
+        raise SchemaViolation(
+            f"{name}: span fields are set but alignment_status is "
+            f"{properties.get('alignment_status')!r}; only an aligned span may be "
+            f"stored"
+        )
+    if not present:
+        return
+    if not properties["span_parse_id"].strip():
+        raise SchemaViolation(f"{name}.span_parse_id: empty")
+    start, end = properties["span_start"], properties["span_end"]
+    if not 0 <= start <= end:
+        raise SchemaViolation(
+            f"{name}: span offsets must satisfy 0 <= span_start <= span_end, "
+            f"got {start}..{end}"
+        )
