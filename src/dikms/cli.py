@@ -63,7 +63,16 @@ def main(argv: list[str] | None = None) -> int:
         help="print per-chunk progress to stderr",
     )
 
+    p_validate = sub.add_parser(
+        "validate", help="re-check committed extraction output against the ontology (offline)"
+    )
+    p_validate.add_argument("files", nargs="+", help="extraction output JSON file(s)")
+    p_validate.add_argument("--ontology", default=DEFAULT_ONTOLOGY)
+    p_validate.add_argument("--verbose", action="store_true", help="print each warning")
+
     args = parser.parse_args(argv)
+    if args.command == "validate":  # needs no sources file
+        return _cmd_validate(args)
     sources = load_sources(args.sources)
 
     try:
@@ -82,6 +91,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 2
+
+
+def _cmd_validate(args) -> int:
+    from .ontology import Ontology
+    from .validate import format_reports, validate_file
+
+    try:
+        ontology = Ontology.load(args.ontology)
+        reports = [validate_file(f, ontology) for f in args.files]
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(format_reports(reports, verbose=args.verbose))
+    return 0  # a report, not a gate
 
 
 def _cmd_fetch(args, sources) -> int:
