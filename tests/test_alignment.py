@@ -605,7 +605,9 @@ def _extract_from(chunks: list[Chunk], parsed: ParsedDocument) -> DocumentExtrac
             ChunkExtraction(
                 chunk_id=c.chunk_id,
                 entities=[
-                    ExtractedEntity(entity_type="Programme", name="FADS", provenance=prov)
+                    ExtractedEntity(
+                        entity_type="Programme", name="FADS", provenance=prov
+                    )
                 ],
             )
         )

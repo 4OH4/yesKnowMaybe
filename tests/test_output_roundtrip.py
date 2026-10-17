@@ -12,7 +12,14 @@ from test_alignment import PARSE_ID, entity, make_doc, provenance
 
 from dikms.extraction.pipeline import DocumentExtraction
 from dikms.models import AlignmentStatus, ChunkExtraction, ExtractedRelation, Span
-from dikms.output import _merge_chunk_order, document_to_dict, read_json, write_json
+from dikms.output import (
+    MANDATORY_PROVENANCE_FIELDS,
+    _merge_chunk_order,
+    document_from_dict,
+    document_to_dict,
+    read_json,
+    write_json,
+)
 
 
 @pytest.mark.parametrize(
@@ -73,6 +80,37 @@ def test_reader_restores_provenance_and_spans(tmp_path):
     untouched = reloaded.all_relations()[0].provenance
     assert untouched.span is None
     assert untouched.alignment_status is AlignmentStatus.PENDING
+
+
+@pytest.mark.parametrize("field", MANDATORY_PROVENANCE_FIELDS)
+@pytest.mark.parametrize("kind", ["entities", "relations", "proposals"])
+def test_incomplete_provenance_fails_to_load(field, kind):
+    """No mandatory provenance field is ever defaulted on read: a fact missing
+    one must fail loudly, not load with an empty value and drift into the
+    store (#10 reads through this function)."""
+    data = document_to_dict(make_doc())
+    del data[kind][0]["provenance"][field]
+    with pytest.raises(KeyError, match=field):
+        document_from_dict(data)
+
+
+def test_bare_string_section_refs_fails_to_load():
+    data = document_to_dict(make_doc())
+    data["entities"][0]["provenance"]["section_refs"] = "page 1"
+    with pytest.raises(ValueError, match="section_refs"):
+        document_from_dict(data)
+
+
+def test_unaligned_provenance_still_loads_without_alignment_fields():
+    """The alignment fields are the only optional ones: an M0-era file that
+    predates them loads as PENDING with no span."""
+    data = document_to_dict(make_doc())
+    for item in data["entities"]:
+        del item["provenance"]["alignment_status"]
+        del item["provenance"]["span"]
+    prov = document_from_dict(data).all_entities()[0].provenance
+    assert prov.alignment_status is AlignmentStatus.PENDING
+    assert prov.span is None
 
 
 def test_reader_preserves_every_fact_and_its_chunk_grouping(tmp_path):

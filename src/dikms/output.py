@@ -75,14 +75,43 @@ def write_json(doc: DocumentExtraction, path: str | Path) -> Path:
     return p
 
 
+MANDATORY_PROVENANCE_FIELDS = (
+    "source_id",
+    "chunk_id",
+    "section_refs",
+    "supporting_quote",
+    "extraction_model",
+    "extracted_at",
+)
+
+
 def _provenance_from_dict(d: dict) -> Provenance:
+    """Rebuild one fact's provenance, refusing to fill in anything mandatory.
+
+    The six mandatory fields are read strictly: a file missing any of them
+    fails to load instead of yielding a fact whose provenance was quietly
+    defaulted. Only the alignment fields, which an unaligned M0 file
+    legitimately lacks, have defaults.
+    """
+    missing = [k for k in MANDATORY_PROVENANCE_FIELDS if k not in d]
+    if missing:
+        raise KeyError(
+            f"provenance for chunk {d.get('chunk_id', '?')!r} is missing mandatory "
+            f"field(s) {', '.join(missing)}"
+        )
+    if not isinstance(d["section_refs"], list):
+        # Not list(...)-coerced: a bare string would become a list of letters.
+        raise ValueError(
+            f"provenance for chunk {d['chunk_id']!r} has section_refs of type "
+            f"{type(d['section_refs']).__name__}, not a list"
+        )
     span = d.get("span")
     return Provenance(
         source_id=d["source_id"],
         chunk_id=d["chunk_id"],
-        section_refs=list(d.get("section_refs") or []),
-        supporting_quote=d.get("supporting_quote", ""),
-        extraction_model=d.get("extraction_model", ""),
+        section_refs=list(d["section_refs"]),
+        supporting_quote=d["supporting_quote"],
+        extraction_model=d["extraction_model"],
         extracted_at=d["extracted_at"],
         alignment_status=AlignmentStatus(d.get("alignment_status", "pending")),
         span=Span(**span) if span else None,
