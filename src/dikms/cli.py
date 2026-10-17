@@ -100,12 +100,19 @@ def _cmd_validate(args) -> int:
 
     try:
         ontology = Ontology.load(args.ontology)
-        reports = [validate_file(f, ontology) for f in args.files]
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    print(format_reports(reports, verbose=args.verbose))
-    return 0  # a report, not a gate
+    reports, failed = [], False
+    for f in args.files:
+        try:
+            reports.append(validate_file(f, ontology))
+        except (OSError, ValueError) as exc:  # JSONDecodeError is a ValueError
+            print(f"error: {f}: {exc}", file=sys.stderr)
+            failed = True
+    if reports:
+        print(format_reports(reports, verbose=args.verbose))
+    return 1 if failed else 0  # findings are a report, not a gate
 
 
 def _cmd_fetch(args, sources) -> int:

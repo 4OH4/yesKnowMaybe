@@ -29,6 +29,7 @@ uv run dikms --help
 uv run dikms fetch
 uv run dikms parse defence-investment-plan --show 500
 uv run dikms chunk navalnews-fads-type83-2025
+uv run dikms validate output/<source>.json   # offline ontology re-check of extraction output
 ```
 
 Downloaded documents land in `data/corpus/` (gitignored). A PDF that yields

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from dikms.cli import main
 from dikms.extraction.pipeline import DocumentExtraction, _validate, constraint_map
 from dikms.models import (
@@ -14,7 +16,7 @@ from dikms.models import (
 )
 from dikms.ontology import EntityType, Ontology, RelationType
 from dikms.output import document_to_dict
-from dikms.validate import validate_file
+from dikms.validate import format_reports, validate_file
 
 TYPES = ["Organisation", "Programme", "Term"]
 ONTOLOGY = Ontology(
@@ -66,9 +68,10 @@ RELS = [
 def test_counts_by_kind_and_type(tmp_path):
     rep = validate_file(_write(tmp_path, RELS), ONTOLOGY)
     assert rep.relations_checked == len(RELS)
-    assert rep.count("domain/range") == 3
-    assert rep.count("missing type") == 1
-    assert rep.count("off-ontology") == 2
+    assert rep.warnings("domain/range") == 3
+    assert rep.items("domain/range") == 3
+    assert rep.items("missing type") == 1
+    assert rep.items("off-ontology") == 2
     assert dict(rep.by_type("domain/range")) == {"rel": 3}
 
 
@@ -79,14 +82,14 @@ def test_matches_whole_chunk_validate(tmp_path):
         ChunkExtraction(chunk_id="c1", relations=RELS), "c1",
         ONTOLOGY.entity_names(), ONTOLOGY.relation_names(), constraint_map(ONTOLOGY),
     )
-    assert sorted(w for _, _, w in rep.findings) == sorted(whole)
+    assert sorted(f.text for f in rep.findings) == sorted(whole)
 
 
 def test_off_ontology_entity(tmp_path):
     ent = ExtractedEntity("Alien", "x", _prov("c1"))
     rep = validate_file(_write(tmp_path, [], [ent]), ONTOLOGY)
     assert rep.entities_checked == 1
-    assert dict(rep.by_type("off-ontology")) == {"Alien": 1}
+    assert dict(rep.by_type("off-ontology")) == {"entity Alien": 1}
 
 
 def test_cli_reports_and_exits_zero_without_modifying_input(tmp_path, capsys):
@@ -105,7 +108,8 @@ def test_cli_reports_and_exits_zero_without_modifying_input(tmp_path, capsys):
     code = main(["validate", path, "--ontology", str(onto), "--verbose"])
     out = capsys.readouterr().out
     assert code == 0
-    assert "domain/range: 3" in out and "missing type: 1" in out
+    assert "domain/range: 3 relations (3 warnings)" in out
+    assert "missing type: 1 relations (1 warnings)" in out
     assert "total: 7 relations" in out
     assert "warn: c1:" in out
     assert open(path, "rb").read() == before
@@ -113,7 +117,8 @@ def test_cli_reports_and_exits_zero_without_modifying_input(tmp_path, capsys):
 
 def test_cli_missing_file_is_an_error(tmp_path, capsys):
     assert main(["validate", str(tmp_path / "nope.json")]) == 1
-    assert "error" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "error" in err and "nope.json" in err
 
 
 def test_missing_type_warnings_helper():
@@ -123,3 +128,63 @@ def test_missing_type_warnings_helper():
         "c1: off-ontology entity type 'missing' for 'missing'",
     ]
     assert len(doc.missing_type_warnings()) == 1
+
+
+def test_relation_breaking_domain_and_range_counts_once(tmp_path):
+    both = _rel("rel", "Term", "Term")  # wrong domain and wrong range
+    rep = validate_file(_write(tmp_path, [both]), ONTOLOGY)
+    assert rep.warnings("domain/range") == 2
+    assert rep.items("domain/range") == 1
+    assert dict(rep.by_type("domain/range")) == {"rel": 1}
+    assert "domain/range: 1 relations (2 warnings)" in format_reports([rep])
+
+
+def test_entity_and_relation_type_names_are_not_mixed(tmp_path):
+    ents = [ExtractedEntity("bogus", "x", _prov("c1"))]
+    path = _write(tmp_path, [_rel("bogus", "Term", "Term")], ents)
+    rep = validate_file(path, ONTOLOGY)
+    assert dict(rep.by_type("off-ontology")) == {"bogus": 1, "entity bogus": 1}
+
+
+def _raw(tmp_path, obj) -> str:
+    path = tmp_path / "raw.json"
+    path.write_text(json.dumps(obj), encoding="utf-8")
+    return str(path)
+
+
+def test_missing_provenance_is_its_own_kind(tmp_path):
+    good = {"relation_type": "rel", "source_type": "Organisation",
+            "target_type": "Programme", "provenance": {"chunk_id": "c1"}}
+    bad = [
+        {"relation_type": "rel", "source_type": "Term", "target_type": "Term"},
+        {"relation_type": "rel", "provenance": None},
+        {"relation_type": "rel", "provenance": {"source_id": "s"}},
+    ]
+    path = _raw(tmp_path, {"entities": [], "relations": [good, *bad]})
+    rep = validate_file(path, ONTOLOGY)
+    assert rep.items("missing provenance") == 3
+    assert rep.items("domain/range") == 0
+
+
+@pytest.mark.parametrize(
+    "obj",
+    [
+        {"source_id": "x", "foo": 1},
+        [],
+        {"entities": [], "relations": None},
+        {"entities": [], "relations": ["notadict"]},
+        {"entities": [], "relations": [{"provenance": "str"}]},
+    ],
+)
+def test_malformed_input_is_an_error(tmp_path, capsys, obj):
+    path = _raw(tmp_path, obj)
+    assert main(["validate", path]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error: ") and "raw.json" in err
+
+
+def test_invalid_json_is_an_error(tmp_path, capsys):
+    path = tmp_path / "bad.json"
+    path.write_text("{nope", encoding="utf-8")
+    assert main(["validate", str(path)]) == 1
+    assert "bad.json" in capsys.readouterr().err
