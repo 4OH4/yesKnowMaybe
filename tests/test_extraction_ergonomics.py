@@ -118,11 +118,15 @@ def test_progress_reports_each_chunk_and_failures():
 
 def test_review_sheet_shows_every_distinct_description(tmp_path):
     props = [
-        TypeProposal("relation", "funds", f"desc {i}", f"why {i}", _prov(f"c{i}", f"quote {i}"))
+        TypeProposal(
+            "relation", "funds", f"desc {i}", f"why {i}", _prov(f"c{i}", f"quote {i}")
+        )
         for i in range(4)
     ]
     # Duplicate of the first occurrence: collapses.
-    props.append(TypeProposal("relation", "funds", "desc 0", "why 0", _prov("c0", "quote 0")))
+    props.append(
+        TypeProposal("relation", "funds", "desc 0", "why 0", _prov("c0", "quote 0"))
+    )
     doc = _doc([[p] for p in props])
     md = write_review_markdown(doc, tmp_path / "r.md").read_text(encoding="utf-8")
     for i in range(4):
