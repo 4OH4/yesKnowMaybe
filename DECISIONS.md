@@ -11,34 +11,49 @@ was decided, why, and what alternatives were considered.
 instruction (`src/dikms/extraction/prompt.py`) now also says the quote must be
 one contiguous passage of the chunk, never phrases joined together from
 separate places, and that where the support is spread out the model quotes
-the single most supportive passage. No other rule, and nothing in the
-per-chunk user prompt or the response schema, changes. The change lands before
-the M1 re-extraction (#11), which now depends on it.
+the single most supportive passage. It also says never to skip words with an
+ellipsis (`...` or `…`): a quote may contain one only where the chunk itself
+does. That is not a blanket ban, because sources contain genuine ellipses (the
+FADS article's one ellipsis quote is a real `…` in the source). No other
+rule, and nothing in the per-chunk user prompt or the response schema,
+changes. The change lands before the M1 re-extraction (#11), which now
+depends on it.
 **Why:** span alignment (#4) locates each fact's quote in its chunk to derive
 a verified offset. Most of the facts it could not place had a *stitched*
 quote, phrases from different parts of the chunk joined into one string,
 which cannot be found as a single span: 54 of the DIP's 61 unresolved facts
 and 5 of the MOD Digital Strategy's 10, as counted in the independent review
-of PR #16. Those figures come from that review's run of the alignment step on
-the M0 output and are not yet reproducible from `main`, since the alignment
-step has not merged. The old rule asked for a short verbatim span but never
+of PR #16 and recorded in that PR's `notes/M1-alignment.md`. One stitching
+pattern is explicit elision, where the model marks the join with an ellipsis
+(e.g. `current and future warhead...programmes`): 31 of the DIP's 1,735
+quotes and 5 of the MOD's 487 contain an ellipsis, and none of those 36 is
+found in its chunk. The old rule asked for a short verbatim span but never
 said it had to be contiguous. Changing the prompt before #11 means one
 credentialled run both refreshes the output under the current ontology and
 measures the effect on alignment rates.
-**Consequence (comparability with M0):** #11's output differs from the M0
-output in both the ontology and the prompt, so its comparison note cannot
-attribute a change in a prompt-affected metric (entity/relation counts by
-type, proposals, alignment rates) to the ontology alone. The note must say so,
-and #11's output becomes the baseline for later comparisons rather than M0's.
-Extraction is already non-deterministic run to run (`notes/M0-review.md`), so
+**Consequence (comparability with M0):** the M0 comparison was already
+prompt-confounded before this change. The MOD and DIP outputs (2,222 of the
+2,291 M0 facts) were extracted between 14:19 and 14:59 UTC on 2026-07-24;
+rules 6 (no named people, extract the Role) and 7 (prefer broad types, don't
+propose instance types) arrived with ontology v2 in d201324 at 15:08 UTC.
+Only the FADS output (69 facts) was produced under today's rules 1–2 and
+4–8. So #11's output differs from most of the M0 output in the ontology, in
+rules 6 and 7, and now in rule 3, and its comparison note cannot attribute a
+change in a prompt-affected metric (entity/relation counts by type,
+proposals, alignment rates) to the ontology alone. The note must say so, and
+#11's output becomes the baseline for later comparisons rather than M0's.
+Extraction is also non-deterministic run to run (`notes/M0-review.md`), so
 the M0 comparison was indicative only.
 Stitched quotes still keep document/section-level provenance, so this is an
 exact-span improvement, not a traceability fix.
 **Alternatives considered:** leave the prompt alone for #11 and change it
-afterwards — keeps #11 a clean ontology-only comparison, but needs a second
-credentialled run to measure the prompt change; don't change it — accept
-about 3–4% of facts without an exact span. Both rejected: the second run costs
-more than the comparability it buys, and the stitching is cheap to ask the
+afterwards — this was presented as keeping #11 a clean ontology-only
+comparison, but that comparison was never available, because rules 6 and 7
+already separate the prompt behind most of the M0 output from today's; it
+would still have needed a second credentialled run to measure the prompt
+change. Don't change it — accept about 3% of facts without an exact span
+(71 of the 2,291 M0 facts, 3.1%). Both rejected: deferring buys no
+comparability, a second run costs more, and the stitching is cheap to ask the
 model to stop.
 
 ---
