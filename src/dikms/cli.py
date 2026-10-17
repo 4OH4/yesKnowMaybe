@@ -56,6 +56,12 @@ def main(argv: list[str] | None = None) -> int:
         help="fire requests straight through with no 429/503 backoff (observe raw API traffic)",
     )
 
+    p_extract.add_argument(
+        "--verbose",
+        action="store_true",
+        help="print per-chunk progress to stderr",
+    )
+
     args = parser.parse_args(argv)
     sources = load_sources(args.sources)
 
@@ -113,6 +119,10 @@ def _cmd_chunk(args, sources) -> int:
     return 0
 
 
+def _stderr_progress(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
+
+
 def _cmd_extract(args, sources) -> int:
     # Imports deferred so `parse`/`chunk` do not require google-genai.
     from .config import ExtractionConfig
@@ -135,6 +145,7 @@ def _cmd_extract(args, sources) -> int:
     doc = extract_document(
         parsed, ontology, extractor,
         target_chars=config.target_chars, max_chars=config.max_chars,
+        progress=_stderr_progress if args.verbose else None,
     )
     json_path = write_json(doc, Path(args.output) / f"{source.id}.json")
     md_path = write_review_markdown(doc, Path(args.output) / f"{source.id}.review.md")

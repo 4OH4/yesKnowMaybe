@@ -11,10 +11,37 @@ Two forms:
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .extraction.pipeline import DocumentExtraction
+from .models import TypeProposal
+
+
+@dataclass
+class ProposalGroup:
+    """All proposals sharing a (kind, name), for the review view only."""
+
+    kind: str
+    name: str
+    proposals: list[TypeProposal] = field(default_factory=list)
+
+    @property
+    def count(self) -> int:
+        return len(self.proposals)
+
+
+def group_proposals(proposals: list[TypeProposal]) -> list[ProposalGroup]:
+    """Group by (kind, name), most frequent first (ties keep first-seen order).
+
+    Presentation only: the groups reference the original records, which stay
+    complete and unaggregated in the JSON output.
+    """
+    groups: dict[tuple[str, str], ProposalGroup] = {}
+    for pr in proposals:
+        key = (pr.kind, pr.name)
+        groups.setdefault(key, ProposalGroup(pr.kind, pr.name)).proposals.append(pr)
+    return sorted(groups.values(), key=lambda g: -g.count)
 
 
 def document_to_dict(doc: DocumentExtraction) -> dict:
@@ -78,10 +105,22 @@ def write_review_markdown(doc: DocumentExtraction, path: str | Path) -> Path:
 
     if doc.all_proposals():
         lines += ["", "## Proposed new types (HITL — not committed)", ""]
-        for pr in doc.all_proposals():
-            lines.append(f"- **{pr.kind}**: {pr.name} — {pr.description}")
-            lines.append(f"  - justification: {pr.justification}")
-            lines.append(f"  - quote: “{pr.provenance.supporting_quote}”")
+        for g in group_proposals(doc.all_proposals()):
+            first = g.proposals[0]
+            chunks = sorted({pr.provenance.chunk_id for pr in g.proposals})
+            lines.append(
+                f"- **{g.kind}**: {g.name} — {first.description} "
+                f"(proposed ×{g.count} in {len(chunks)} chunk(s): {', '.join(chunks)})"
+            )
+            for justification in dict.fromkeys(pr.justification for pr in g.proposals):
+                lines.append(f"  - justification: {justification}")
+            seen: set[tuple[str, str]] = set()
+            for pr in g.proposals:
+                key = (pr.provenance.chunk_id, pr.provenance.supporting_quote)
+                if key in seen:
+                    continue
+                seen.add(key)
+                lines.append(f"  - quote ({key[0]}): “{key[1]}”")
 
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return p
