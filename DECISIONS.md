@@ -6,6 +6,43 @@ was decided, why, and what alternatives were considered.
 
 ---
 
+### Extraction prompt: supporting quotes must be one contiguous passage, changed before the M1 re-extraction
+**Decision:** Approved (HITL, #23) — rule 3 of the extraction system
+instruction (`src/dikms/extraction/prompt.py`) now also says the quote must be
+one contiguous passage of the chunk, never phrases joined together from
+separate places, and that where the support is spread out the model quotes
+the single most supportive passage. No other rule, and nothing in the
+per-chunk user prompt or the response schema, changes. The change lands before
+the M1 re-extraction (#11), which now depends on it.
+**Why:** span alignment (#4) locates each fact's quote in its chunk to derive
+a verified offset. Most of the facts it could not place had a *stitched*
+quote, phrases from different parts of the chunk joined into one string,
+which cannot be found as a single span: 54 of the DIP's 61 unresolved facts
+and 5 of the MOD Digital Strategy's 10, as counted in the independent review
+of PR #16. Those figures come from that review's run of the alignment step on
+the M0 output and are not yet reproducible from `main`, since the alignment
+step has not merged. The old rule asked for a short verbatim span but never
+said it had to be contiguous. Changing the prompt before #11 means one
+credentialled run both refreshes the output under the current ontology and
+measures the effect on alignment rates.
+**Consequence (comparability with M0):** #11's output differs from the M0
+output in both the ontology and the prompt, so its comparison note cannot
+attribute a change in a prompt-affected metric (entity/relation counts by
+type, proposals, alignment rates) to the ontology alone. The note must say so,
+and #11's output becomes the baseline for later comparisons rather than M0's.
+Extraction is already non-deterministic run to run (`notes/M0-review.md`), so
+the M0 comparison was indicative only.
+Stitched quotes still keep document/section-level provenance, so this is an
+exact-span improvement, not a traceability fix.
+**Alternatives considered:** leave the prompt alone for #11 and change it
+afterwards — keeps #11 a clean ontology-only comparison, but needs a second
+credentialled run to measure the prompt change; don't change it — accept
+about 3–4% of facts without an exact span. Both rejected: the second run costs
+more than the comparability it buys, and the stitching is cheap to ask the
+model to stop.
+
+---
+
 ### Build automation: GitHub Issues and a Project board, run by lead/worker/reviewer agents; Linear dropped
 **Decision:** The backlog moves from Linear to GitHub Issues on this repo,
 tracked on a GitHub Project board (Backlog → Ready → In progress → Agent
