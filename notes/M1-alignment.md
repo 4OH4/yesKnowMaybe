@@ -1,8 +1,8 @@
 # M1 — span alignment rates across the M0 corpus
 
 Measured with `dikms align <source_id> --dry-run` against the M0 extraction
-output in `output/*.json`, at the shipped floor (`alignment.min_ratio: 0.95` in
-`config/extraction.yaml`). "Facts" counts entities, relations and type
+output in `output/*.json`, at the shipped settings in `config/extraction.yaml`
+(`alignment.min_ratio: 0.95`, `alignment.fuzzy_anchor_chars: 3`). "Facts" counts entities, relations and type
 proposals — everything carrying a `Provenance`.
 
 This is the M1 exit criterion for span alignment: the rate has to be
@@ -14,7 +14,7 @@ This is the M1 exit criterion for span alignment: the rate has to be
 |---|---|---:|---:|---:|---:|
 | `navalnews-fads-type83-2025` | HTML (trafilatura) | 69 | 69 | **100.0%** | 0 |
 | `mod-digital-strategy-2021` | PDF (pypdf) | 487 | 477 | **97.9%** | 10 |
-| `defence-investment-plan` | PDF (pypdf) | 1735 | 1674 | **96.5%** | 61 |
+| `defence-investment-plan` | PDF (pypdf) | 1735 | 1673 | **96.4%** | 62 |
 
 By match method:
 
@@ -22,11 +22,13 @@ By match method:
 |---|---:|---:|---:|
 | `navalnews-fads-type83-2025` | 68 | 0 | 1 |
 | `mod-digital-strategy-2021` | 293 | 182 | 2 |
-| `defence-investment-plan` | 1100 | 569 | 5 |
+| `defence-investment-plan` | 1100 | 569 | 4 |
 
-Only **8 facts in the whole corpus** (0.4% of the 2,220 aligned) rest on the
+Only **7 facts in the whole corpus** (0.3% of the 2,219 aligned) rest on the
 fuzzy tier; everything else matches character-identically after normalisation.
-All 8 were inspected individually and all 8 are correct.
+All 7 were inspected individually and all 7 are correct. An eighth, the DIP
+`"…: • SSN-A"` quote, used to align as a partial span that omitted "SSN-A"; the
+anchor check now refuses it (see "Known limitation" below).
 
 The HTML/PDF split predicted in the ticket shows up, but weakly and not for the
 predicted reason. PDF artefacts (line-break whitespace, `ﬁ`/`ﬃ` ligatures,
@@ -83,7 +85,7 @@ into three groups, and in all three refusing to align is the correct answer.
    Plan: • Reactor core"`, or a table header to a distant row:
    `"Table 2: Spending on the Integrated Force12 … Weapons and Munitions
    £11.1bn"`. There is no single contiguous span in the source that this text
-   corresponds to, so there is nothing to highlight. **54 of DIP's 61**
+   corresponds to, so there is nothing to highlight. **55 of DIP's 62**
    unresolved facts and **5 of MOD's 10** are this pattern (counted by the
    presence of an ellipsis, a bullet, or two or more internal line breaks).
 
@@ -115,17 +117,20 @@ changing the extraction prompt) and is worth its own backlog item.
 ## Setting the floor: 0.95, from evidence
 
 The floor was initially set at 0.85 and moved to 0.95 after inspecting every
-fuzzy match on the real corpus. Rates by floor:
+fuzzy match on the real corpus. Rates by floor, first on the ratio alone and
+then with the shipped anchor check (`fuzzy_anchor_chars: 3`, below):
 
-| Floor | HTML | MOD | DIP |
-|---|---:|---:|---:|
-| 0.85 | 100.0% | 97.9% | 97.8% |
-| 0.90 | 100.0% | 97.9% | 97.2% |
-| **0.95** | **100.0%** | **97.9%** | **96.5%** |
-| 0.97 | 100.0% | 97.7% | 96.3% |
+| Floor | HTML | MOD | DIP (ratio only) | DIP (with anchor) |
+|---|---:|---:|---:|---:|
+| 0.85 | 100.0% | 97.9% | 97.8% | 96.5% |
+| 0.90 | 100.0% | 97.9% | 97.2% | 96.5% |
+| **0.95** | **100.0%** | **97.9%** | 96.5% | **96.4%** |
+| 0.97 | 100.0% | 97.7% | 96.3% | 96.3% |
 
-The raw rate is not the thing to maximise. 0.85 buys 22 extra DIP matches
-(1.3pp), and they split two ways:
+The HTML and MOD columns are the same either way.
+
+The raw rate is not the thing to maximise. On the ratio alone, 0.85 buys 22
+extra DIP matches (1.3pp), and they split two ways:
 
 * **9 are wrong spans.** These are the group-1 stitched quotes, where a long
   shared lead-in carries the ratio while the tail names a different item, so
@@ -134,16 +139,22 @@ The raw rate is not the thing to maximise. 0.85 buys 22 extra DIP matches
   is worse than no highlight, and directly contrary to "no unaligned or
   unverified offset is ever stored as if it were a confirmed span". These are
   what the floor exists to exclude.
-* **13 are partial spans** — a contiguous prefix of the quote, every character
+* **13 are partial spans**: a contiguous prefix of the quote, every character
   of which really is text the quote contains (`"substantial continued
-  investment in"`, `"…for the Maritime Domain"`). Losing these is a cost of the
-  higher floor, not a benefit.
+  investment in"`, `"…for the Maritime Domain"`). A partial span omits part of
+  what the quote says, so it may omit the fact itself.
 
 (Classified mechanically: a span is *partial* if its normalised text is a
 substring of the normalised quote, *wrong* if it contains text the quote does
 not.)
 
-On this corpus the two populations do separate, but not by much:
+With the anchor check, a 0.85 floor adds only 2 DIP matches over 0.95. Both are
+wrong: Astute Class at 0.9462 and Dreadnought Class at 0.9319, each aligned onto
+the Vanguard Class bullet, whose last characters ("class") satisfy the end
+anchor. The anchor removes all 13 partial spans and 7 of the 9 wrong ones, but
+not those two, so the floor still has work to do.
+
+On this corpus the correct and wrong populations do separate, but not by much:
 
 * the lowest-scoring **correct** fuzzy match is **0.9506** (DIP:
   `"Uncrewed Systems Centre (USC)... will be Defence's central authority…"`,
@@ -152,28 +163,47 @@ On this corpus the two populations do separate, but not by much:
 * the highest-scoring **wrong** match is **0.9462** (the Astute/Vanguard case
   above).
 
-So the usable gap is about **0.004 wide**, and 0.95 sits inside it. Most correct
-fuzzy matches score far higher (0.97–0.99) and are line-break artefacts inside
-otherwise identical text, but the two lowest accepted matches are word-level
-differences, so the margin should not be treated as comfortable. The
-de-hyphenation fix above reduces how much rides on it — two-thirds of the former
-fuzzy population now matches exactly, leaving 8 facts corpus-wide inside the
-fuzzy tier — but it does not widen the gap itself.
+So the usable gap is about **0.004 wide**, and 0.95 sits inside it. None of the
+7 accepted fuzzy matches is a whitespace or line-break artefact: each is a
+word- or character-level difference in otherwise identical text.
+
+| Source | Ratio | Difference between quote and source |
+|---|---:|---|
+| DIP | 0.9945 | missing parenthesis: quote `DNE figure`, source `DNE) figure` |
+| DIP | 0.9939 | missing parenthesis, as above |
+| HTML | 0.9938 | missing parenthesis: quote `FTEWA functionality`, source `FTEWA) functionality` |
+| MOD | 0.9730 | source typo: source `oversea`, quote `oversee` |
+| DIP | 0.9697 | dropped word: source `we have also set`, quote `we have set` |
+| MOD | 0.9529 | added word: quote `this digital strategy`, source `this strategy` |
+| DIP | 0.9506 | elision: quote `(USC)...`, source `(USC), announced in the SDR,` |
+
+The two lowest are whole-word differences, so the margin should not be treated
+as comfortable. The de-hyphenation fix above reduces how much rides on it (most
+of the former fuzzy population now matches exactly, leaving 7 facts corpus-wide
+inside the fuzzy tier), but it does not widen the gap itself.
 
 **Known limitation of the mechanism, not just the value.** A single ratio is a
 blunt instrument for exactly this failure mode: a long shared prefix can carry a
 divergent tail, and the separation above is a property of this corpus rather
-than a guarantee. Two consequences are already visible:
+than a guarantee. The ratio alone accepted one stitched DIP quote
+(`"…: • SSN-A"`, 0.9634) on a span covering only the contiguous lead-in: it
+stopped at the bullet, so "SSN-A", the item the fact is about, was not in the
+span.
 
-* one stitched DIP quote (`"…: • SSN-A"`, 0.9634) is accepted, and its span
-  covers only the contiguous lead-in, stopping at the bullet rather than
-  running on to the wrong item. A partial span is defensible — every character
-  it selects is text the quote really contains — but it is not the whole quote;
-* if a future document produces correct matches below 0.95 or wrong ones above
-  it, the fix is a better scoring rule (scoring the tail separately, or
-  bounding the longest contiguous mismatch), not more floor-tuning.
+That is what the **anchor check** (`alignment.fuzzy_anchor_chars`) fixes: a
+fuzzy span must reproduce the first and last 3 normalised characters of its
+quote. On this corpus it refuses exactly the SSN-A span and keeps the other 7.
+3 is the largest value that does: the two DNE quotes share only `dne` with the
+start of their spans, since the source has `DNE)`. The price is that a slip in a
+quote's first or last few characters now costs the match. That costs recall
+only, never a wrong span.
 
-Flagged rather than pre-emptively built.
+The anchor catches truncation, not substitution: a wrong item whose ending
+happens to match (Vanguard *Class* for Astute *Class*) passes it, and only the
+ratio refuses it. If a future document produces correct matches below 0.95 or
+wrong ones above it, the fix is a better scoring rule (scoring the tail
+separately, or bounding the longest contiguous mismatch), not more
+floor-tuning. Flagged rather than pre-emptively built.
 
 ## Ambiguity
 
@@ -198,7 +228,7 @@ Two limits worth knowing before ingestion consumes this:
   several times once typography is flattened, and counting raw occurrences would
   have called that unambiguous. A fuzzy match still reports one occurrence by
   construction, since there is no cheap way to ask "how many other regions would
-  also have cleared the floor". Fuzzy is now 0.4% of aligned facts, so this is a
+  also have cleared the floor". Fuzzy is now 0.3% of aligned facts, so this is a
   small blind spot, but it is a blind spot.
 
 The practical mitigation is a longer quote, which again points back at the

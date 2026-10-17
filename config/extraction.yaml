@@ -40,12 +40,15 @@ alignment:
   # UNRESOLVED — never a guessed span.
   #
   # Set from evidence, not taste (notes/M1-alignment.md): across the three M0
-  # documents every *correct* fuzzy match scores >= 0.953 (they are single
-  # whitespace/hyphen artefacts in an otherwise identical quote), while every
-  # *wrong* one scores <= 0.946 — those are quotes the model stitched from
+  # documents the lowest *correct* fuzzy match scores 0.9506 (an elided quote)
+  # and the highest *wrong* one 0.9462 — a quote the model stitched from
   # non-contiguous text, where a long shared prefix carries the ratio while the
-  # tail points at the wrong item. 0.95 separates the two and costs 1.3pp of
-  # raw alignment rate on the largest document (22 of 1735 facts).
+  # tail points at the wrong item. The 7 correct fuzzy matches are word- or
+  # character-level differences in otherwise identical text: a dropped word, an
+  # added word, a source typo, an elision and missing parentheses (three
+  # quotes). 0.95 sits inside a gap only 0.004 wide, so re-derive it when the
+  # extraction output changes. With the anchor check below, a floor of 0.85
+  # would add just 2 DIP matches, both wrong; 0.95 refuses them.
   min_ratio: 0.95
   # Quotes shorter than this are never fuzzy-matched: over a handful of
   # characters the ratio is too coarse to tell a near-miss from a different
