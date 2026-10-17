@@ -21,9 +21,11 @@ depends on it.
 **Why:** span alignment (#4) locates each fact's quote in its chunk to derive
 a verified offset. Most of the facts it could not place had a *stitched*
 quote, phrases from different parts of the chunk joined into one string,
-which cannot be found as a single span: 54 of the DIP's 61 unresolved facts
+which cannot be found as a single span: 55 of the DIP's 62 unresolved facts
 and 5 of the MOD Digital Strategy's 10, as counted in the independent review
-of PR #16 and recorded in that PR's `notes/M1-alignment.md`. One stitching
+of PR #16 and recorded in that PR's `notes/M1-alignment.md`. These figures,
+and the 72 below, are taken from that note as of a571455, after its recount;
+a later recount can be traced from there. One stitching
 pattern is explicit elision, where the model marks the join with an ellipsis
 (e.g. `current and future warhead...programmes`): 31 of the DIP's 1,735
 quotes and 5 of the MOD's 487 contain an ellipsis, and none of those 36 is
@@ -52,7 +54,7 @@ comparison, but that comparison was never available, because rules 6 and 7
 already separate the prompt behind most of the M0 output from today's; it
 would still have needed a second credentialled run to measure the prompt
 change. Don't change it — accept about 3% of facts without an exact span
-(71 of the 2,291 M0 facts, 3.1%). Both rejected: deferring buys no
+(72 of the 2,291 M0 facts, 3.1%). Both rejected: deferring buys no
 comparability, a second run costs more, and the stitching is cheap to ask the
 model to stop.
 
