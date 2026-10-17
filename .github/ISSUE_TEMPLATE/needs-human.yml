@@ -1,0 +1,114 @@
+name: Needs human
+description: A decision, credentialled step, ontology change or judgement call that an agent shouldn't make alone.
+title: "[area] Short description of the decision or task"
+labels: ["needs-human"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for work that needs the human's judgement or credentials: architecture decisions, ontology changes
+        (CLAUDE.md constraint 3), Vertex/Spanner runs, GCP/Terraform/billing, eval expectations, go/no-go reviews.
+        Agents may prepare material for these issues (drafts, analysis, a merge-ready PR) but must not close them.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Decision (architecture / approach; recorded in DECISIONS.md)
+        - Ontology change (config/ontology.yaml)
+        - Setup / credentials (Vertex, Spanner, GCP, Terraform, quota)
+        - Content curation (sources, eval expectations)
+        - Review (go/no-go, quality check)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - parsing
+        - extraction
+        - alignment
+        - storage
+        - ingest
+        - query
+        - eval
+        - ontology
+        - infra
+        - docs
+    validations:
+      required: true
+
+  - type: input
+    id: milestone
+    attributes:
+      label: Milestone
+      placeholder: "M1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: |
+        Written for the human first. Open with a short plain-language paragraph: the problem or question, why it
+        needs settling now, and what it unblocks. Then link ROADMAP.md, ARCHITECTURE.md / DECISIONS.md sections
+        and related issues.
+    validations:
+      required: true
+
+  - type: textarea
+    id: needed
+    attributes:
+      label: What's needed
+      description: |
+        Open with one or two plain sentences: the decision or task, and what changes depending on the outcome.
+        Then the specifics: the question to answer, or the exact steps to carry out.
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: Options considered
+      description: For decisions. List the options with trade-offs and a recommendation if there is one.
+    validations:
+      required: false
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Definition of done
+      description: Checkboxes. For decisions, include "DECISIONS.md entry merged".
+      value: |
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: blocks
+    attributes:
+      label: Blocks
+      description: Issues waiting on this one, e.g. "#7, #8".
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: One per line as "Depends on #N", or "None".
+      value: None
+    validations:
+      required: true
+
+  - type: textarea
+    id: agent_prep
+    attributes:
+      label: Agent prep (optional)
+      description: What an agent could prepare to make this quicker, such as a merge-ready PR, an analysis or a list of options.
+    validations:
+      required: false
