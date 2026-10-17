@@ -6,6 +6,46 @@ was decided, why, and what alternatives were considered.
 
 ---
 
+### Build automation: GitHub Issues and a Project board, run by lead/worker/reviewer agents; Linear dropped
+**Decision:** The backlog moves from Linear to GitHub Issues on this repo,
+tracked on a GitHub Project board (Backlog → Ready → In progress → Agent
+review → Human review → Done). A lead session (`/lead-start`,
+`/lead-finish`) runs the board with up to three worker agents and an
+independent, read-only reviewer per PR, adapted from the news-bot repo. Rupert
+approves work by merging PRs, `needs-human` ones included. This replaces both
+the Linear two-phase model (`/supervise`) and the interim rule that agents stop
+before committing. Mechanics are in `AUTOMATION.md` and `CLAUDE.md`.
+**Why:** Linear's MCP connection kept needing re-authentication and the board
+drifted from reality: YES-6 sat in In Review with no PR, and YES-5 was
+labelled needs-input only because the agent hit an account spend limit, with
+its work left uncommitted in a worktree. The news-bot setup keeps state next
+to the code, needs only `gh`, and bounds review cost (two rounds, Defect vs
+Follow-up), which YES-6 showed was needed.
+**Alternatives considered:** keep Linear and fix the connection — rejected,
+the overhead wasn't paying its way for a solo project; return to
+`stories/*.md` — rejected, no state, relations or PR links.
+
+The M1 tickets were exported from Linear and recreated unchanged in substance.
+Git history before this point uses the Linear identifiers:
+
+| Linear | GitHub | Title |
+| --- | --- | --- |
+| — | #2 | Run the build from GitHub Issues and a Project board |
+| YES-5 | #3 | Storage-adapter interface and provenance-bearing schema |
+| YES-6 | #4 | Post-hoc span alignment |
+| — | #5 | Ontology v3 (the decision behind PR #1) |
+| YES-7 | #6 | Relation domain/range validation |
+| YES-8 | #7 | Extraction run ergonomics |
+| YES-9 | #8 | Kùzu backend |
+| YES-10 | #9 | Spanner Graph backend |
+| YES-11 | #10 | Ingestion path |
+| YES-12 | #11 | Re-extract the corpus (needs-human) |
+| YES-13 | #12 | Trace-back query tool |
+| YES-14 | #13 | Eval set as a regression check |
+| — | #14 | CI and the pre-existing ruff failures |
+
+---
+
 ### Ontology v3: four relation domain/range constraints widened, the rest held
 **Decision:** Approved (HITL, YES-7) — widen four declared constraints to match
 observed valid usage, and bump the ontology to **version 3**:

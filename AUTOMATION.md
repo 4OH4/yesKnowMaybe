@@ -1,114 +1,115 @@
 # Automation
 
-How the build gets driven day-to-day: hand the backlog over once, let Claude
-Code delegate each story into its own context, and only step in when
-something's actually stuck. This replaces a hand-rolled tmux/story-cycle
-setup — the mechanism below is native to Claude Code, not scripted.
+How the build is driven day to day, and why it is set up this way. The
+operating rules that agents follow live in `CLAUDE.md` ("Workflow" and "Agent
+automation"); this file is the rationale and the map.
 
-## Mechanism
+The model is adapted from the news-bot repo, where it has run a full build
+phase: one **lead** session runs a GitHub Project board, hands issues to up to
+three **worker** agents, and has every PR checked by a fresh, read-only
+**reviewer** agent before Rupert sees it. Rupert's job is to read and merge.
 
-**Agent view + background subagents**, not the Workflows runtime.
+## Where things live
 
-- **Agent view** is a table of independent Claude Code sessions. Dispatching
-  a story starts a new row with its own full context. Rows are grouped by
-  state (**Needs input / Working / Completed**), with anything needing you
-  pinned at the top — you scan and step in only where it matters.
-- **Background subagents** run inside a session, concurrently, each in its
-  own isolated context that reports only a summary back. Subagents run in
-  the background by default and can commit, push, and open a draft PR
-  themselves once they finish work in their own worktree.
-- **The Notification hook** (`agent_needs_input` / `agent_completed`) fires
-  when a session is stuck or done. Wire this to a desktop notification or a
-  Teams/Slack webhook so a check-in doesn't depend on watching a screen.
+| Concept | Lives in |
+| --- | --- |
+| Milestone (M1, M2, …) | GitHub **milestone**, mirroring `ROADMAP.md` |
+| One reviewable unit of work | GitHub **issue**, following `.github/ISSUE_TEMPLATE/` |
+| Sequencing | `Depends on #N` lines in the issue body, read by `scripts/board.py` |
+| Status | The **Project board**'s Status column |
+| Needs Rupert (decision, credentials, ontology change) | Label `needs-human` |
+| Safe for an agent to take unsupervised | Label `agent-ready` |
+| The work itself | Branch `issue-<n>-<slug>` and a PR that says `Closes #<n>` |
+| Judgement calls Rupert approves by merging | The PR's "For human review" section |
+| Settled design | `ARCHITECTURE.md`, `DECISIONS.md` (unchanged) |
+| One-line intent for milestones not yet written up | `BACKLOG.md` |
 
-**Why not Workflows or Agent Teams:** Workflows are a script-driven fan-out
-of many same-shaped agents with no human touch until a final report — right
-for later, bulk tasks (e.g. batch-tuning entity-resolution thresholds
-across many candidate pairs once there's real data to tune against), wrong
-for an ongoing build that needs occasional real judgement calls. Agent
-teams are session-bound and ephemeral — no persistence, no resume — built
-for live collaborative work in one sitting, not a build running across many
-cycles while unattended. Neither fits "hand it over and get pinged when
-stuck" as well as agent view.
+Labels also carry `area:*` (parsing, extraction, alignment, storage, ingest,
+query, eval, ontology, infra, docs) and `size:S|M|L`, where L means split it
+before an agent picks it up.
 
-## The handover prompt
+## The board
 
-Given to the lead session once, at the start of a work session (not
-re-explained per story):
+https://github.com/users/4OH4/projects/2, linked to this repo.
 
-> Work through `BACKLOG.md` in `ROADMAP.md` order. For each item, dispatch
-> it as its own background session:
->
-> 1. Read `CLAUDE.md`, `ARCHITECTURE.md`, `DECISIONS.md`, and the specific
->    backlog line.
-> 2. Scope the item into a story with acceptance criteria (write it to
->    `stories/<slug>.md`).
-> 3. Implement it in its own git worktree.
-> 4. Run tests/lint until they pass, or stop after two rounds make no
->    further progress.
-> 5. Review the diff specifically against the four non-negotiable
->    constraints in `CLAUDE.md` (traceability, non-destructive merge, HITL
->    ontology gating, no classified material) — not just general code
->    quality.
-> 6. If clean: commit, push, open a draft PR.
-> 7. If not clean, or a constraint is at risk, or the story is genuinely
->    ambiguous: stop, do not force a commit, and flag it rather than
->    guessing.
->
-> Keep no more than 3 stories running at once; dispatch the next when one
-> finishes. Don't wait for my approval between stories unless something's
-> flagged under step 7.
+`Backlog` → `Ready` → `In progress` → `Agent review` → `Human review` → `Done`
 
-## Per-story contract
+- **Backlog**: written, but not yet startable: a dependency is still open, or
+  it's `needs-human`.
+- **Ready**: `agent-ready` with every dependency closed. `board.py promote`
+  moves issues here; it never promotes `needs-human` ones.
+- **In progress**: a worker holds it.
+- **Agent review**: the PR is open and agents are still reviewing or
+  reworking it.
+- **Human review**: the lead has posted its review; the PR waits only for
+  Rupert.
+- **Done**: closed.
 
-Every dispatched session/subagent operates under the same contract,
-regardless of which backlog item it's handling:
+## A lead session
 
-1. **Own context, own worktree.** No shared state with other in-flight
-   stories; conflicts are structurally avoided, not resolved after the
-   fact.
-2. **Test-until-pass, bounded.** Two rounds of fix-and-retest; a third
-   failure escalates rather than looping indefinitely.
-3. **Review against the four constraints explicitly**, not just "does this
-   look like reasonable code" — this is the check that actually protects
-   traceability and non-destructive merging as the project grows past
-   anyone reading every diff by hand.
-4. **Commit small, per story** — consistent with the existing preference
-   for small, frequent commits; one story is one reviewable unit.
-5. **Escalate rather than guess.** Any of: tests not passing after two
-   rounds, a constraint genuinely at risk, or real ambiguity not resolved by
-   `DECISIONS.md` — the session stops and surfaces the question instead of
-   picking an answer and moving on.
+1. `/lead-start` runs `scripts/lead.py start` (update `main`, sync
+   dependencies, tidy merged worktrees and branches, promote unblocked
+   issues), then reads the handoff note from the last session.
+2. The lead starts workers on Ready issues, at most three at a time, and
+   never two whose "Files / modules in scope" overlap.
+3. Each worker implements its issue in its own worktree, runs the tests and
+   lint, does the four-constraint pass, opens a PR and moves its card to
+   Agent review.
+4. The lead starts a reviewer for each finished PR. The reviewer writes its
+   findings into the PR's "For human review" section, marking each as a
+   **Defect** (fix in this PR) or a **Follow-up** (a new issue).
+5. Defects go back to the worker, with at most two review rounds. The lead
+   re-runs the checks, posts a "Lead review" comment and moves the card to
+   Human review.
+6. When nothing is left to start or review for 45 minutes, the lead runs
+   `/lead-finish`: it tidies up, writes the `lead-handoff` memory and ends the
+   session. A fresh `/lead-start` is cheaper than reloading a long session
+   whose prompt cache has gone cold.
 
-## Concurrency
+## Why this shape
 
-Cap at 3 concurrent stories. This is a stated instruction to the lead
-session, not a script parameter — it's a modest-parallelism preference
-(faster than fully sequential BMAD cycles, without needing to reason about
-larger-scale fan-out or its cost).
+- **Approval is the merge.** The earlier setup had a separate up-front
+  approval gate on tickets, then left work uncommitted for Rupert to inspect.
+  Here the PR is the unit Rupert reviews, and the "For human review" section
+  lists exactly what he is approving. `needs-human` work, ontology changes
+  above all, still never reaches `main` without his merge, which is what
+  constraint 3 in `CLAUDE.md` requires.
+- **Independent review, bounded.** On YES-6 (now #4) a separate reviewer
+  caught things tests structurally couldn't (wrong numbers in a notes file,
+  and a normaliser solving a problem the corpus doesn't have), while
+  self-review caught nothing. The same ticket showed that review cost scales
+  with rounds and that design changes found in review sprawl if they're
+  handled in the same PR. Hence:
+  - a fresh-context reviewer for every PR;
+  - a two-round cap;
+  - the Defect/Follow-up split;
+  - property tests before the first review, for code that fails by producing
+    plausible-but-wrong output.
+- **The constraint pass is explicit.** A general code review won't flag a
+  dropped provenance field or a quietly widened ontology as a defect, so both
+  the worker and the reviewer check each of the four constraints on its own.
+- **Everything in one place.** Issues, branches, PRs and CI sit next to the
+  code, and `gh` is the only tool needed. Linear needed an MCP connection that
+  kept dropping its authentication, and its board drifted out of step with
+  the code.
 
-## Checking in
+## What stays with Rupert
 
-- **Agent view**, scanned periodically: "Needs input" rows are pinned at
-  the top — that's the whole check-in, no transcript-reading required.
-- **Notification hook**, for not having to watch the screen: wire
-  `agent_needs_input` to a Teams/Slack webhook or desktop notification, so
-  a stuck story surfaces on its own.
-- **Completed, clean stories** need no check-in at all — commit, push, and
-  draft PR happen without you, per the per-story contract above. Reviewing
-  merged PRs periodically is a separate, lighter task from babysitting the
-  build itself.
+- Merging every PR, including `needs-human` ones (decisions, ontology
+  changes, eval expectations).
+- Anything needing credentials: Vertex/Gemini extraction runs, Spanner,
+  `terraform apply`, quota requests, GitHub settings and secrets.
+- Choosing between real alternatives when an issue raises one.
 
-## Where this sits relative to the rest of the project
+## Differences from news-bot
 
-- Follows `ROADMAP.md` ordering — the lead session shouldn't jump milestones
-  out of sequence even if a later backlog item looks quick.
-- Draws its non-negotiable review checklist directly from `CLAUDE.md`.
-- `stories/` (written by the scoping step) is the closest equivalent to a
-  BMAD story file, but generated and consumed automatically rather than
-  hand-curated per cycle.
-- Revisit **Workflows** once there's a genuine bulk, no-judgement-needed
-  task — e.g. once M2's entity resolution is live and there's a backlog of
-  candidate-duplicate pairs to batch-score, or an M0-style extraction audit
-  across many documents at once. Not needed for driving the milestone build
-  itself.
+- Windows rather than Ubuntu: scripts run as `uv run python scripts/...`,
+  there is no Makefile or pre-commit hook, and agents use Git Bash.
+- The uv project is at the repo root, not in `backend/`.
+- Workers and reviewers carry this project's four non-negotiable constraints,
+  and the PR template has a Constraint check section in place of news-bot's
+  contract checks.
+- `data/corpus/` and `output/` are git-ignored, so worktrees copy them from
+  the main checkout when an issue needs them.
+- No CI yet (#14 adds it), and no Claude Code GitHub Action.
+- Decisions stay in `DECISIONS.md` rather than ADR files.

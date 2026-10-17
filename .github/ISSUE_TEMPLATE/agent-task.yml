@@ -1,0 +1,146 @@
+name: Agent-ready task
+description: A fully specified task that a Claude Code agent can pick up and complete unsupervised.
+title: "[area] Short imperative description"
+labels: ["agent-ready"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for work an agent can complete without further input.
+        If you can't fill in every required section, or the work needs credentials or an ontology change,
+        label the issue `needs-human` instead.
+        Keep the scope to one area/module where possible so parallel agents don't collide.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - parsing
+        - extraction
+        - alignment
+        - storage
+        - ingest
+        - query
+        - eval
+        - infra
+        - docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      description: "L tasks should be split before being marked agent-ready."
+      options:
+        - S (under a couple of hours)
+        - M (roughly half a day)
+        - L (split this first)
+    validations:
+      required: true
+
+  - type: input
+    id: milestone
+    attributes:
+      label: Milestone
+      description: Which ROADMAP.md milestone this belongs to.
+      placeholder: "M1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: |
+        Written for the human reviewer first. Open with a short plain-language paragraph: the problem or gap today,
+        what this change makes possible, and why it's needed now (what it unblocks). Then link the ROADMAP.md
+        milestone, ARCHITECTURE.md / DECISIONS.md sections, the BACKLOG.md line it came from and related issues.
+    validations:
+      required: true
+
+  - type: textarea
+    id: task
+    attributes:
+      label: Task
+      description: |
+        Open with **Summary:** two to four plain sentences on what is being built and how it fits the pipeline
+        (which stage, what goes in, what comes out, the main pieces) or, for infra/docs issues, the workflow.
+        Then **Details:** the precise spec, including module/function names and behaviour where they matter.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Testable checkboxes. The agent ticks these off in the PR.
+      value: |
+        - [ ]
+        - [ ] Tests cover the new behaviour offline (no credentials, no network)
+        - [ ] `uv run pytest` and `uv run ruff check` pass
+    validations:
+      required: true
+
+  - type: textarea
+    id: in_scope
+    attributes:
+      label: Files / modules in scope
+      description: Where the agent may make changes. The lead uses this to avoid running overlapping issues at once.
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: Explicitly excluded work, to stop scope creep and collisions with other agents.
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraint check
+      description: |
+        Which of the four non-negotiable constraints in CLAUDE.md this touches, and how it satisfies each.
+        N/A where genuinely irrelevant, but traceability almost never is.
+      value: |
+        * **Traceability:**
+        * **Non-destructive merge:**
+        * **HITL ontology gating:**
+        * **No client/classified material:**
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Issues that must be merged first, one per line as "Depends on #N". Write "None" if there are none.
+      placeholder: |
+        Depends on #3
+    validations:
+      required: true
+
+  - type: textarea
+    id: verify
+    attributes:
+      label: How to verify
+      description: Commands to run and the expected results, plus anything the agent shouldn't have to rediscover.
+      value: |
+        ```bash
+        uv run ruff check
+        uv run pytest
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / hints
+      description: Optional. Relevant modules, gotchas, ordering constraints.
+    validations:
+      required: false
