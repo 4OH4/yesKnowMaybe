@@ -140,7 +140,8 @@ def _cmd_extract(args, sources) -> int:
     md_path = write_review_markdown(doc, Path(args.output) / f"{source.id}.review.md")
     print(f"{source.id}: {len(doc.all_entities())} entities · "
           f"{len(doc.all_relations())} relations · "
-          f"{len(doc.all_proposals())} proposals · {len(doc.warnings)} warnings · "
+          f"{len(doc.all_proposals())} proposals · {len(doc.warnings)} warnings "
+          f"({len(doc.domain_range_warnings())} domain/range) · "
           f"{len(doc.failed_chunks)} failed chunks")
     for w in doc.warnings:
         print(f"  warn: {w}")
