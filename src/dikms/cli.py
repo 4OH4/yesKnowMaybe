@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from .chunking import chunk_document
+from .config import ConfigError
 from .fetch import fetch_source, load_bytes
 from .parsing import parse_source
 from .sources import get_source, load_sources
@@ -68,7 +69,10 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_chunk(args, sources)
         if args.command == "extract":
             return _cmd_extract(args, sources)
-    except (KeyError, FileNotFoundError, RuntimeError) as exc:
+    # ConfigError specifically — a malformed config file is a user error and
+    # should report as one, not a traceback. Other ValueErrors are bugs and
+    # keep their traceback.
+    except (KeyError, ConfigError, FileNotFoundError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 2
