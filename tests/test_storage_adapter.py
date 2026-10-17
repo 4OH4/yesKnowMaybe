@@ -8,6 +8,7 @@ separate tickets.
 
 from __future__ import annotations
 
+import itertools
 from typing import Any
 
 import pytest
@@ -28,6 +29,7 @@ from dikms.storage import (
     TraversalResult,
     provenance_properties,
 )
+from dikms.storage.schema import SOURCE_LABEL
 
 
 class StubAdapter(StorageAdapter):
@@ -165,6 +167,39 @@ def test_extracted_from_edge_carries_the_provenance_block(adapter: StubAdapter) 
         chunk_id="chunk-3",
     )
     assert adapter.edges[ref]["chunk_id"] == "chunk-3"
+
+
+def test_an_edge_to_a_source_must_name_that_source(
+    adapter: StubAdapter, schema: GraphSchema
+) -> None:
+    """For every edge type with a Source endpoint and a provenance block, and
+    every (endpoint id, source_id) pair from a small grid: the write is
+    accepted exactly when the two agree, so a trace-back can never name two
+    different documents for one edge."""
+    ids = ("src-a", "src-b", "src-a ")
+    checked = 0
+    for edge in schema.edges:
+        if edge.property("source_id") is None:
+            continue
+        for source_label, target_label in edge.pairs():
+            if SOURCE_LABEL not in (source_label, target_label):
+                continue
+            for endpoint_id, claimed in itertools.product(ids, ids):
+                source = NodeRef(
+                    source_label, endpoint_id if source_label == SOURCE_LABEL else "e:1"
+                )
+                target = NodeRef(
+                    target_label, endpoint_id if target_label == SOURCE_LABEL else "e:1"
+                )
+                props = dict(provenance_properties(_provenance()), source_id=claimed)
+                if claimed == endpoint_id:
+                    ref = adapter.upsert_edge(edge.type, source, target, props)
+                    assert ref.source_id == endpoint_id
+                else:
+                    with pytest.raises(ValueError, match="does not match the Source"):
+                        adapter.upsert_edge(edge.type, source, target, props)
+                checked += 1
+    assert checked, "no provenanced edge type touches a Source node"
 
 
 def test_a_second_source_adds_an_edge_rather_than_overwriting_the_first(

@@ -39,6 +39,7 @@ from typing import Any
 
 from ..config import StorageConfig
 from .schema import (
+    SOURCE_LABEL,
     EdgeDef,
     GraphSchema,
     NodeDef,
@@ -363,6 +364,16 @@ class StorageAdapter(ABC):
             definition, apply_defaults(definition, properties)
         )
         validate_properties(definition, props)
+        if definition.property("source_id") is not None:
+            # An edge touching a Source node (``extracted_from``, ``mentions``)
+            # must name that same document in its provenance; otherwise a
+            # trace-back would answer with two different documents.
+            for endpoint in (source, target):
+                if endpoint.label == SOURCE_LABEL and props["source_id"] != endpoint.id:
+                    raise ValueError(
+                        f"{edge_type}: source_id={props['source_id']!r} does not "
+                        f"match the Source endpoint {endpoint.id!r}"
+                    )
         return self.edge_ref(edge_type, source, target, props), props
 
     def edge_ref(
