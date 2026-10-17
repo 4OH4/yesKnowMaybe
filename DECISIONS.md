@@ -61,11 +61,11 @@ All other domain/range violations observed in the M0 corpus are **deliberately
 left as violations**, to be surfaced as warnings by the validator (YES-7) rather
 than legislated away.
 
-**Why:** A domain/range check over the three committed `output/*.json` files
-(628 relations, current ontology) flagged 70 violations — 11.1%. Of those, 42
+**Why:** A domain/range check over the three M0 `output/*.json` files
+(628 relations, current ontology) flagged 70 violations — 11.1%. Of those, 41
 are cases where the extraction is plainly right and the ontology was plainly too
-narrow: a programme *does* deliver hardware ("Project NYX delivers armed
-autonomous drones", ×21), a subsystem *is* part of a platform ("APKWS part_of
+narrow: a programme *does* deliver hardware, other programmes or a capability ("Project NYX delivers armed
+autonomous drones", ×21 across such targets), a subsystem *is* part of a platform ("APKWS part_of
 Typhoon", ×7), a government *does* fund an agency ("UK Government funds DSTL",
 ×7). Declaring those invalid would generate persistent noise against correct
 output and train the reader to ignore the warning channel.
