@@ -19,6 +19,7 @@ from ..ontology import Ontology
 
 _DOMAIN_MARK = "outside declared domain"
 _RANGE_MARK = "outside declared range"
+_MISSING_MARK = "missing"
 
 
 class Extractor(Protocol):
@@ -81,7 +82,7 @@ def _validate(
     chunk_id: str,
     entity_names: set[str],
     relation_names: set[str],
-    constraints: dict[str, tuple[list[str], list[str]]] | None = None,
+    constraints: dict[str, tuple[list[str], list[str]]],
 ) -> list[str]:
     warnings: list[str] = []
     for e in result.entities:
@@ -94,13 +95,19 @@ def _validate(
             warnings.append(
                 f"{chunk_id}: off-ontology relation type '{r.relation_type}'"
             )
-        elif constraints and r.relation_type in constraints:
+        elif r.relation_type in constraints:
             domain, range_ = constraints[r.relation_type]
             for t, allowed, mark, name in (
                 (r.source_type, domain, _DOMAIN_MARK, r.source_name),
                 (r.target_type, range_, _RANGE_MARK, r.target_name),
             ):
-                if _outside(t, allowed):
+                if not t and _constrained(allowed):
+                    role = "domain" if mark == _DOMAIN_MARK else "range"
+                    warnings.append(
+                        f"{chunk_id}: relation '{r.relation_type}' {_MISSING_MARK} "
+                        f"{role} type (for '{name}'); cannot check it"
+                    )
+                elif _outside(t, allowed):
                     warnings.append(
                         f"{chunk_id}: relation '{r.relation_type}' type '{t}' "
                         f"(for '{name}') {mark} [{', '.join(allowed)}]"
@@ -117,8 +124,12 @@ def _outside(entity_type: str, allowed: list[str]) -> bool:
     """True if the type is outside a declared domain/range.
 
     An empty list or a "*" entry means unconstrained. An empty entity type is
-    left to the existing checks, so it is not reported here.
+    never "outside" here; `_validate` reports it separately as a missing type.
     """
-    if not allowed or "*" in allowed or not entity_type:
+    if not _constrained(allowed) or not entity_type:
         return False
     return entity_type not in allowed
+
+
+def _constrained(allowed: list[str]) -> bool:
+    return bool(allowed) and "*" not in allowed

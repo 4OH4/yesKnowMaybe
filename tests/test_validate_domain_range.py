@@ -7,8 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from dikms.extraction.pipeline import _validate
-from dikms.models import ChunkExtraction, ExtractedRelation, Provenance
+from dikms.extraction.pipeline import _validate, extract_document
+from dikms.models import (
+    ChunkExtraction,
+    ExtractedRelation,
+    ParsedDocument,
+    Provenance,
+    SourceFormat,
+)
 from dikms.ontology import EntityType, Ontology, RelationType
 
 TYPES = ["Organisation", "Programme", "Hardware", "Term"]
@@ -95,3 +101,38 @@ def test_committed_ontology_wildcards_never_warn():
         if rt.domain in ([], ["*"]) and rt.range in ([], ["*"]):
             for src, tgt in itertools.product(sorted(ont.entity_names()), repeat=2):
                 assert _run(ont, _rel(rt.name, src, tgt)) == []
+
+
+def test_empty_endpoint_type_gets_missing_warning_not_violation():
+    ont = _ontology(["Organisation"], ["Programme"])
+    warnings = _run(ont, _rel("rel", "", "Programme"))
+    assert len(warnings) == 1
+    assert "missing" in warnings[0] and "domain" in warnings[0]
+    assert "outside declared" not in warnings[0]
+    assert len(_run(ont, _rel("rel", "", ""))) == 2
+    # unconstrained sides have nothing to check
+    assert _run(_ontology([], ["*"]), _rel("rel", "", "")) == []
+
+
+def test_extract_document_records_and_counts_domain_range_warnings():
+    ont = _ontology(["Organisation"], ["Programme"])
+
+    class Stub:
+        def extract(self, ontology, chunk):
+            return ChunkExtraction(
+                chunk_id=chunk.chunk_id,
+                relations=[
+                    _rel("rel", "Term", "Programme"),
+                    _rel("rel", "", "Programme"),
+                ],
+            )
+
+    parsed = ParsedDocument(
+        source_id="s", fmt=next(iter(SourceFormat)), parser="t", parse_id="p",
+        text="Some text.",
+    )
+    doc = extract_document(parsed, ont, Stub())
+    assert doc.chunks
+    assert any("outside declared domain" in w for w in doc.warnings)
+    assert len(doc.domain_range_warnings()) == 1  # missing type not counted
+    assert any("missing" in w for w in doc.warnings)
