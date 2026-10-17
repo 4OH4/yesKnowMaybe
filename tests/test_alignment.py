@@ -62,7 +62,7 @@ CHUNK_TWO_TEXT = (
 PARSED_TEXT = CHUNK_ONE_TEXT + "\n\n" + CHUNK_TWO_TEXT
 
 # The shipped floor, so the tests exercise what the CLI actually runs with.
-CONFIG = AlignmentConfig(min_ratio=0.95, min_fuzzy_chars=12)
+CONFIG = AlignmentConfig(min_ratio=0.95, min_fuzzy_chars=12, fuzzy_anchor_chars=3)
 
 
 def make_parsed(text: str = PARSED_TEXT, parse_id: str = PARSE_ID) -> ParsedDocument:
@@ -194,9 +194,10 @@ def test_genuinely_wrapped_word_falls_through_to_fuzzy():
 
 def test_near_miss_quote_aligns_fuzzily_above_the_floor():
     # The characteristic real near-miss: the quote is a character out from the
-    # source (here a stray plural), so it cannot match under normalisation but
-    # is unmistakably the same text.
-    quote = "The UK Royal Navy is developing the Future Air Dominance Systems"
+    # source (here a doubled letter), so it cannot match under normalisation but
+    # is unmistakably the same text. The slip is mid-quote: both ends must still
+    # match (see the anchor tests below).
+    quote = "The UK Royal Navy is develloping the Future Air Dominance System"
     parsed, match = align_one(quote)
     assert match is not None
     assert match.method == MATCH_FUZZY
@@ -240,11 +241,11 @@ def test_near_miss_below_the_ratio_floor_does_not_align():
 
 
 def test_min_fuzzy_chars_rejects_a_short_quote_that_would_clear_the_ratio():
-    # "Royal Navvy" scores 0.952 against "Royal Navy" — over the ratio floor,
-    # but only because a one-character slip in a short string barely moves the
-    # ratio. The length floor is what must reject it, so this isolates that knob
-    # rather than re-testing the ratio.
-    quote = "Royal Navvy"
+    # "Royyal Navy" scores 0.952 against "Royal Navy" — over the ratio floor,
+    # and with both ends intact, but only because a one-character slip in a
+    # short string barely moves the ratio. The length floor is what must reject
+    # it, so this isolates that knob rather than re-testing the ratio.
+    quote = "Royyal Navy"
     assert len(quote) < CONFIG.min_fuzzy_chars
     assert align_one(quote, config=CONFIG)[1] is None
 
@@ -252,6 +253,121 @@ def test_min_fuzzy_chars_rejects_a_short_quote_that_would_clear_the_ratio():
     relaxed = align_one(quote, config=no_length_floor)[1]
     assert relaxed is not None
     assert relaxed.ratio >= CONFIG.min_ratio
+
+
+# A reconstruction of the real DIP case: a quote stitched from a shared lead-in
+# and one distant bullet. The best region stops at the first bullet, so it
+# scores 0.9634 while omitting "SSN-A", the very item the fact is about.
+STITCHED_TEXT = (
+    "We will invest in the following capability areas through the Defence "
+    "Investment Plan: \n• Reactor core \n• Astute Class \n• Vanguard Class \n"
+    "• Dreadnought Class \n• SSN-A"
+)
+STITCHED_QUOTE = (
+    "invest in the following capability areas through the Defence Investment "
+    "Plan: • SSN-A"
+)
+
+
+def _single_chunk(text: str) -> tuple[ParsedDocument, Chunk]:
+    parsed = make_parsed(text=text)
+    chunk = Chunk(
+        chunk_id=f"{parsed.parse_id}::0000",
+        source_id=parsed.source_id,
+        parse_id=parsed.parse_id,
+        ordinal=0,
+        text=text,
+        start=0,
+        end=len(text),
+    )
+    return parsed, chunk
+
+
+def test_fuzzy_span_missing_the_end_of_its_quote_does_not_align():
+    parsed, chunk = _single_chunk(STITCHED_TEXT)
+    without_anchor = AlignmentConfig(
+        min_ratio=CONFIG.min_ratio, min_fuzzy_chars=12, fuzzy_anchor_chars=0
+    )
+    # The ratio alone accepts it: this is what the anchor exists to catch.
+    truncated = align_quote(parsed, chunk, STITCHED_QUOTE, without_anchor)
+    assert truncated is not None
+    assert truncated.ratio >= CONFIG.min_ratio
+    assert "SSN-A" not in parsed.text[truncated.span.start : truncated.span.end]
+
+    assert align_quote(parsed, chunk, STITCHED_QUOTE, CONFIG) is None
+
+
+def test_fuzzy_span_missing_the_start_of_its_quote_does_not_align():
+    # The mirror case: an invented opening word the source does not have.
+    quote = "Additionally the UK Royal Navy is developing the Future Air Dominance"
+    without_anchor = AlignmentConfig(
+        min_ratio=0.85, min_fuzzy_chars=12, fuzzy_anchor_chars=0
+    )
+    with_anchor = AlignmentConfig(
+        min_ratio=0.85, min_fuzzy_chars=12, fuzzy_anchor_chars=3
+    )
+    assert align_one(quote, config=without_anchor)[1] is not None
+    assert align_one(quote, config=with_anchor)[1] is None
+
+
+def test_a_slip_in_the_last_characters_costs_the_match():
+    """The anchor's known price: a typo inside the last few characters fails
+    the end anchor however high the ratio. That costs recall (the fact is
+    UNRESOLVED), never a wrong span."""
+    quote = "The UK Royal Navy is developing the Future Air Dominance Systems"
+    without_anchor = AlignmentConfig(
+        min_ratio=CONFIG.min_ratio, min_fuzzy_chars=12, fuzzy_anchor_chars=0
+    )
+    assert align_one(quote, config=without_anchor)[1] is not None
+    assert align_one(quote)[1] is None
+
+
+_WORDS = (
+    "defence investment plan capability programme royal navy future air "
+    "dominance system uncrewed centre digital strategy will deliver the a of "
+    "and through following areas class reactor core"
+).split()
+
+
+def test_every_accepted_fuzzy_span_reproduces_both_ends_of_its_quote():
+    """Property: over generated chunks and perturbed quotes, any span that
+    aligns scores at or above the floor, lies inside its chunk, and its
+    normalised text starts and ends with the quote's anchor characters."""
+    import random
+
+    rng = random.Random(20261017)
+    k = CONFIG.fuzzy_anchor_chars
+    accepted_fuzzy = 0
+    for _ in range(400):
+        words = [rng.choice(_WORDS) for _ in range(rng.randint(20, 60))]
+        sep = [rng.choice([" ", " ", " ", "\n", " • "]) for _ in words]
+        text = "".join(w + s for w, s in zip(words, sep, strict=True)).strip()
+        parsed, chunk = _single_chunk(text)
+        a = rng.randrange(0, len(words) - 6)
+        b = rng.randrange(a + 4, min(len(words), a + 20))
+        quote = list(" ".join(words[a:b]))
+        for _ in range(rng.randint(0, 3)):  # a few character-level edits
+            i = rng.randrange(len(quote))
+            op = rng.choice(["drop", "insert", "swap"])
+            if op == "drop" and len(quote) > 1:
+                del quote[i]
+            elif op == "insert":
+                quote.insert(i, rng.choice("abcdefghij "))
+            else:
+                quote[i] = rng.choice("abcdefghij")
+        if rng.random() < 0.3:  # stitch on a distant word
+            quote += [" ", "•", " "] + list(rng.choice(_WORDS))
+        match = align_quote(parsed, chunk, "".join(quote), CONFIG)
+        if match is None:
+            continue
+        sliced = normalise(text[match.span.start : match.span.end]).text
+        quote_norm = normalise("".join(quote).strip()).text
+        assert chunk.start <= match.span.start < match.span.end <= chunk.end
+        assert match.ratio >= CONFIG.min_ratio
+        assert sliced.startswith(quote_norm[:k])
+        assert sliced.endswith(quote_norm[-k:])
+        accepted_fuzzy += match.method == MATCH_FUZZY
+    assert accepted_fuzzy >= 20  # otherwise the property was barely exercised
 
 
 def test_ambiguous_quote_uses_first_match_and_records_the_count():
@@ -355,11 +471,14 @@ def test_match_floor_comes_from_config(tmp_path):
 
     config_file = tmp_path / "extraction.yaml"
     config_file.write_text(
-        "alignment:\n  min_ratio: 0.99\n  min_fuzzy_chars: 40\n", encoding="utf-8"
+        "alignment:\n  min_ratio: 0.99\n  min_fuzzy_chars: 40\n"
+        "  fuzzy_anchor_chars: 5\n",
+        encoding="utf-8",
     )
     loaded = AlignmentConfig.load(config_file)
     assert loaded.min_ratio == 0.99
     assert loaded.min_fuzzy_chars == 40
+    assert loaded.fuzzy_anchor_chars == 5
     assert align_one(quote, config=loaded)[1] is None
 
 
@@ -373,10 +492,8 @@ def test_repository_config_supplies_the_shipped_floor():
     loaded = AlignmentConfig.load(REPO_ROOT / "config" / "extraction.yaml")
     assert loaded.min_ratio == 0.95
     assert loaded.min_fuzzy_chars == 12
-    assert (loaded.min_ratio, loaded.min_fuzzy_chars) == (
-        CONFIG.min_ratio,
-        CONFIG.min_fuzzy_chars,
-    )
+    assert loaded.fuzzy_anchor_chars == 3
+    assert loaded == CONFIG
 
 
 # --- document level -------------------------------------------------------
@@ -391,7 +508,7 @@ def make_doc(parse_id: str = PARSE_ID) -> DocumentExtraction:
             entity("Future Air Dominance System", c0, "FADS"),  # exact
             entity('"Type 83 destroyer"', c0, "Type 83"),  # normalised
             entity(  # fuzzy — a character out from the source
-                "It will deliver the “Type 83 destroyers”", c0, "Type 83 (again)"
+                "It will delivers the “Type 83 destroyer”", c0, "Type 83 (again)"
             ),
             entity("Typhoon fighter jets from Eurofighter", c0, "Typhoon"),  # fails
         ],

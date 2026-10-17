@@ -49,12 +49,22 @@ alignment:
   min_ratio: 0.95
   # Quotes shorter than this are never fuzzy-matched: over a handful of
   # characters the ratio is too coarse to tell a near-miss from a different
-  # word ("Royal Navvy" scores 0.952 against "Royal Navy"). Short quotes still
+  # word ("Royyal Navy" scores 0.952 against "Royal Navy"). Short quotes still
   # align via the exact/normalised stages. At the 0.95 floor this rail is
   # currently inert on the M0 corpus — the ratio rejects those cases first — and
   # is kept so that lowering min_ratio cannot start snapping short entity names
   # onto near-neighbours.
   min_fuzzy_chars: 12
+  # A fuzzy span must also reproduce the first and last this-many characters of
+  # its quote (both normalised), or the fact is UNRESOLVED. The ratio alone
+  # accepted a span that stopped short of the item the fact names: the DIP quote
+  # "…through the Defence Investment Plan: • SSN-A" scored 0.9634 on a span
+  # ending at the bullet, without "SSN-A". 3 is the largest value that keeps
+  # every correct fuzzy match on the M0 corpus: two DIP quotes drop a ")" after
+  # "DNE", so their spans share only "dne" with the quote's opening. The price
+  # is that a slip within a quote's last or first few characters now costs the
+  # match (recall only, never a wrong span). 0 disables the check.
+  fuzzy_anchor_chars: 3
 
 storage:
   # Which backend the storage adapter uses (DECISIONS.md: knowledge store).

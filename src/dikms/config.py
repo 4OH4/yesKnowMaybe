@@ -199,6 +199,7 @@ class AlignmentConfig:
 
     min_ratio: float = 0.95
     min_fuzzy_chars: int = 12
+    fuzzy_anchor_chars: int = 3
 
     @classmethod
     def load(cls, path: str | Path) -> AlignmentConfig:
@@ -207,4 +208,7 @@ class AlignmentConfig:
         return cls(
             min_ratio=float(alignment.get("min_ratio", cls.min_ratio)),
             min_fuzzy_chars=int(alignment.get("min_fuzzy_chars", cls.min_fuzzy_chars)),
+            fuzzy_anchor_chars=int(
+                alignment.get("fuzzy_anchor_chars", cls.fuzzy_anchor_chars)
+            ),
         )

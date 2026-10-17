@@ -15,7 +15,9 @@ The ladder, cheapest first, searching only within the originating chunk's
    dashes flattened, ligatures decomposed, PDF line-wrap hyphenation joined,
    case folded) mapped back to real source offsets;
 3. a bounded fuzzy match (``difflib.SequenceMatcher``) whose ratio must clear a
-   floor read from ``config/extraction.yaml``;
+   floor read from ``config/extraction.yaml``, and whose span must reproduce
+   the first and last few characters of the quote (``fuzzy_anchor_chars``), so
+   a span that stops short of what the quote names is refused;
 4. otherwise no span.
 
 Whichever stage hits, the derived offsets are sliced back out of the parsed text
@@ -161,8 +163,8 @@ class QuoteMatch:
     # chunk bounds is used and the ambiguity is reported rather than silently
     # resolved. A fuzzy match always reports 1, since asking "how many other
     # regions would also have cleared the floor" has no cheap answer — the one
-    # remaining blind spot, covering 1% of aligned facts. See
-    # notes/M1-alignment.md.
+    # remaining blind spot, covering 7 of the 2,219 aligned facts on the M0
+    # corpus. See notes/M1-alignment.md.
     occurrences: int
 
 
@@ -180,7 +182,8 @@ def _verify(
     This is what makes a stored span verifiable: the text the offsets actually
     select is normalised again and scored against the quote, so the recorded
     ratio can be reproduced from the parse alone. Anything under the configured
-    floor is refused, whichever stage proposed it.
+    floor is refused, whichever stage proposed it, as is any non-identical
+    slice that does not reproduce both ends of the quote.
     """
     if end <= start:
         return None
@@ -192,6 +195,8 @@ def _verify(
         # An exact/normalised candidate that does not re-verify identically is
         # reported honestly as a fuzzy match rather than overstated.
         method = MATCH_FUZZY
+        if not _anchors_match(slice_norm, quote_norm, config.fuzzy_anchor_chars):
+            return None
     if ratio < config.min_ratio:
         return None
     return QuoteMatch(
@@ -199,6 +204,24 @@ def _verify(
         method=method,
         ratio=ratio,
         occurrences=occurrences,
+    )
+
+
+def _anchors_match(slice_norm: str, quote_norm: str, anchor: int) -> bool:
+    """Whether a fuzzy span reproduces the first and last ``anchor`` characters
+    of its quote (both normalised).
+
+    The ratio alone accepts a span that stops short of the quote: a long shared
+    lead-in carries it over the floor even when the words that name the fact
+    are missing, as with the DIP quote ending "...Plan: • SSN-A" whose best
+    region stops at the bullet. Requiring both ends to be present rejects such
+    truncated spans. A quote shorter than ``anchor`` must appear whole at each
+    end. ``anchor`` of 0 disables the check.
+    """
+    if anchor <= 0:
+        return True
+    return slice_norm.startswith(quote_norm[:anchor]) and slice_norm.endswith(
+        quote_norm[-anchor:]
     )
 
 
