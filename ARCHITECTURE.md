@@ -345,6 +345,31 @@ transitivity constraint under Entity Resolution. Spanner and its service account
 are provisioned as Terraform (`terraform/`); running `apply` is a manual human
 step, but the embedded Kùzu path needs none of that.
 
+### Schema decisions worth stating outside the code
+
+The declarative schema lives in `src/dikms/storage/schema.py`, which carries the
+full element-by-element Kùzu ↔ Spanner Graph mapping. Three choices there are
+design decisions rather than implementation detail:
+
+- **Node labels and edge types are derived from `config/ontology.yaml`**, never
+  listed in code, so the ontology file stays the only place types are defined.
+- **`same_as` is narrower in the schema than in the ontology file.** The
+  ontology declares `domain: ["*"] / range: ["*"]`; the schema restricts the
+  edge to *same-label* pairs, matching the resolution pipeline above
+  ("compared against existing entities of the same type") and avoiding one
+  edge definition per type pair in Spanner Graph. Consequence to be aware of:
+  an entity typed `Programme` in one document and `Capability` in another
+  cannot be linked by `same_as` — that is a re-typing question, not an
+  identity one. Editing `same_as`'s domain/range in the ontology file will not
+  change this; the restriction is in `EdgeDef.same_label_only`.
+- **Fact-bearing edges are keyed per extraction**, i.e. by relation, endpoints,
+  `source_id` and `chunk_id`. A second source — or a second chunk of the same
+  source, which the Chunking section calls a routine case — therefore adds an
+  edge rather than overwriting the earlier one's supporting quote, which is
+  what makes "rankable by significance where multiple sources support one
+  fact" achievable. Nodes carry a single provenance block recording the most
+  recent extraction; the full history lives on the `extracted_from` edges.
+
 ## Retrieval
 
 Agentic, not fixed hybrid concatenation:

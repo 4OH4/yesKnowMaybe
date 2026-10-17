@@ -43,6 +43,9 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/dikms"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 88
 target-version = "py311"
