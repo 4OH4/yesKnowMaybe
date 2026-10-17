@@ -230,7 +230,10 @@ class StorageAdapter(ABC):
         extraction over the same chunk updates that one edge in place, which is
         what makes ingestion idempotent.
 
-        Returns the key of the edge written.
+        Returns the key of the edge written. A backend stores the edge from
+        the returned ``ref.source`` to ``ref.target``, not from the arguments
+        as passed: for ``same_as`` the key puts the endpoints in canonical
+        order, so writing B->A updates the stored A->B edge.
         """
 
     # -- reads ----------------------------------------------------------
@@ -390,8 +393,16 @@ class StorageAdapter(ABC):
         the same source, adds an edge instead of overwriting the first one's
         provenance. Edges with no provenance block (``same_as``) are keyed on
         the relation and its endpoints alone: one identity claim per pair.
+
+        For a symmetric edge type (:attr:`EdgeDef.symmetric`, i.e. ``same_as``)
+        the endpoints are put in canonical order, sorted by (label, id), so
+        ``same_as(A, B)`` and ``same_as(B, A)`` are one key and one stored
+        edge. Otherwise a pair rejected one way round could be proposed again
+        the other way, holding two contradictory review states.
         """
         definition = self.schema.edge(edge_type)
+        if definition.symmetric:
+            source, target = sorted((source, target), key=lambda n: (n.label, n.id))
         if definition.property("source_id") is None:
             return EdgeRef(edge_type, source, target)
         return EdgeRef(

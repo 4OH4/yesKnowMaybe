@@ -258,6 +258,80 @@ def test_same_as_is_keyed_on_the_pair_alone(adapter: StubAdapter) -> None:
     assert not ref.is_occurrence()
 
 
+def _same_as(confidence: float = 0.9, **extra: Any) -> dict[str, Any]:
+    return {
+        "confidence": confidence,
+        "method": "embedding",
+        "created_at": "2026-07-25T00:00:00Z",
+        **extra,
+    }
+
+
+def test_same_as_is_one_edge_whichever_way_round_it_is_written(
+    adapter: StubAdapter, schema: GraphSchema
+) -> None:
+    """Over every ordered pair of distinct nodes from a small set, for every
+    label same_as allows: A->B and B->A give the same key, so a pair has one
+    stored identity claim and one review state."""
+    ids = ("p:a", "p:b", "p:B", "p:a2", "z", "0")
+    labels = [s for s, _ in schema.edge("same_as").pairs()]
+    for label in labels:
+        for x, y in itertools.permutations(ids, 2):
+            a, b = NodeRef(label, x), NodeRef(label, y)
+            forward = adapter.edge_ref("same_as", a, b, _same_as())
+            backward = adapter.edge_ref("same_as", b, a, _same_as())
+            assert forward == backward
+            assert (forward.source.id, forward.target.id) == tuple(sorted((x, y)))
+
+
+def test_a_rejected_pair_cannot_be_reproposed_the_other_way_round(
+    adapter: StubAdapter,
+) -> None:
+    """The reviewer's probe: reject A->B, then propose B->A."""
+    a, b = NodeRef("Programme", "p:a"), NodeRef("Programme", "p:b")
+    adapter.upsert_edge("same_as", a, b, _same_as(review_status="rejected"))
+    adapter.upsert_edge("same_as", b, a, _same_as(0.95))
+    same_as = {r: p for r, p in adapter.edges.items() if r.type == "same_as"}
+    assert len(same_as) == 1  # one pair, one claim: the later write updates it
+    (ref,) = same_as
+    assert (ref.source, ref.target) == (a, b)
+
+
+@pytest.mark.parametrize(
+    ("confidence", "accepted"),
+    [
+        (0.0, True),
+        (0.5, True),
+        (1.0, True),
+        (1, True),
+        (-0.0001, False),
+        (1.0001, False),
+        (7.5, False),
+        (float("nan"), False),
+        (float("inf"), False),
+        (float("-inf"), False),
+    ],
+)
+def test_confidence_is_a_finite_value_in_zero_to_one(
+    adapter: StubAdapter, confidence: float, accepted: bool
+) -> None:
+    """Both the identity confidence on same_as and the optional extraction
+    confidence on a substantive relation."""
+    a, b = NodeRef("Programme", "p:a"), NodeRef("Programme", "p:b")
+    org = NodeRef("Organisation", "o:bae")
+    develops = dict(provenance_properties(_provenance()), confidence=confidence)
+    writes = (
+        lambda: adapter.upsert_edge("same_as", a, b, _same_as(confidence)),
+        lambda: adapter.upsert_edge("develops", org, a, develops),
+    )
+    for write in writes:
+        if accepted:
+            write()
+        else:
+            with pytest.raises(SchemaViolation, match="confidence"):
+                write()
+
+
 def test_declared_defaults_are_filled_in(adapter: StubAdapter) -> None:
     """A write that omits alignment_status still records one — the schema
     declares the default, so it is not left to each backend."""

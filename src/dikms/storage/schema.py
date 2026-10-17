@@ -72,6 +72,8 @@ Enum-valued property  ``STRING`` + validation here   ``STRING(MAX)`` + validatio
 Vector property       ``FLOAT[<dim>]`` + the         ``ARRAY<FLOAT32>`` +
                       ``VECTOR`` extension's HNSW    ``VECTOR INDEX`` with
                       index                          ``COSINE`` distance
+Numeric range         validation here (Kùzu has no   validation here (no ``CHECK``
+(e.g. ``confidence``) ``CHECK`` constraint)          is declared, to match)
 Arbitrary edge props  properties on a REL table      columns on the edge input table
 ===================== ============================== ==============================
 
@@ -96,6 +98,7 @@ that constraint is the same on either side and is enforced at write time by
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -137,6 +140,9 @@ class PropertyDef:
     values: tuple[str, ...] = ()  # controlled vocabulary, empty for free values
     dimension: int | None = None  # VECTOR only
     default: Any = None  # column DEFAULT; both backends support one
+    #: Inclusive bounds for a numeric property, checked at write time.
+    minimum: float | None = None
+    maximum: float | None = None
 
 
 @dataclass(frozen=True)
@@ -171,6 +177,10 @@ class EdgeDef:
     #: Also keeps the edge cheap in Spanner Graph, which needs one edge
     #: definition per (source table, destination table) pair.
     same_label_only: bool = False
+    #: Endpoint order carries no meaning (``same_as``): A->B and B->A are one
+    #: edge, stored under the canonical order :meth:`StorageAdapter.edge_ref`
+    #: gives, so one pair can never hold two contradictory review states.
+    symmetric: bool = False
 
     def property(self, name: str) -> PropertyDef | None:
         return next((p for p in self.properties if p.name == name), None)
@@ -489,10 +499,13 @@ def build_schema(ontology: Ontology, vector_dimension: int) -> GraphSchema:
                     source_labels=entity_labels,
                     target_labels=entity_labels,
                     same_label_only=True,
+                    symmetric=True,
                     properties=(
                         PropertyDef(
                             "confidence",
                             PropertyType.FLOAT,
+                            minimum=0.0,
+                            maximum=1.0,
                             description=(
                                 "Continuous identity confidence for this pair alone."
                             ),
@@ -536,6 +549,8 @@ def build_schema(ontology: Ontology, vector_dimension: int) -> GraphSchema:
                     "confidence",
                     PropertyType.FLOAT,
                     required=False,
+                    minimum=0.0,
+                    maximum=1.0,
                     description=(
                         "Extraction confidence, where the pipeline records one."
                     ),
@@ -731,6 +746,22 @@ def _is_blank(prop: PropertyDef, value: Any) -> bool:
     return False
 
 
+def _check_number(name: str, prop: PropertyDef, value: float) -> None:
+    """Finite, and inside any declared bounds. NaN would pass a naive
+    ``min <= value <= max`` written the other way round, and a confidence of
+    7.5 or NaN would rank above every real one."""
+    if not math.isfinite(value):
+        raise SchemaViolation(f"{name}.{prop.name}: {value!r} is not finite")
+    if prop.minimum is not None and value < prop.minimum:
+        raise SchemaViolation(
+            f"{name}.{prop.name}: {value!r} is below the minimum {prop.minimum}"
+        )
+    if prop.maximum is not None and value > prop.maximum:
+        raise SchemaViolation(
+            f"{name}.{prop.name}: {value!r} is above the maximum {prop.maximum}"
+        )
+
+
 def validate_properties(
     definition: NodeDef | EdgeDef,
     properties: Mapping[str, Any],
@@ -747,7 +778,9 @@ def validate_properties(
     * declared property types (both backends have typed columns);
     * timestamps parse as ISO 8601 with a UTC offset;
     * controlled vocabularies;
-    * vector width matches the configured dimension.
+    * numbers are finite and inside declared bounds (``confidence`` in 0..1);
+    * vector width matches the configured dimension;
+    * exact-span coherence (see :func:`_check_span`).
     """
     name = getattr(definition, "label", None) or definition.type
     declared = {p.name: p for p in definition.properties}
@@ -783,6 +816,8 @@ def validate_properties(
             raise SchemaViolation(
                 f"{name}.{key}: {value!r} not in {list(prop.values)}"
             )
+        if prop.type is PropertyType.FLOAT:
+            _check_number(name, prop, value)
         if prop.type is PropertyType.VECTOR:
             if prop.dimension is not None and len(value) != prop.dimension:
                 raise SchemaViolation(
