@@ -19,7 +19,7 @@ import pytest
 import dikms.storage
 
 #: Modules that make up the backend-agnostic surface.
-SURFACE_MODULES = ("__init__", "base", "schema", "factory")
+SURFACE_MODULES = ("__init__", "base", "schema", "factory", "identity", "keys")
 
 #: Top-level packages that would couple the surface to one backend.
 FORBIDDEN_ROOTS = {
