@@ -22,6 +22,7 @@ from ..ontology import Ontology
 _DOMAIN_MARK = "outside declared domain"
 _RANGE_MARK = "outside declared range"
 _MISSING_MARK = "missing"
+_CANNOT_CHECK_MARK = "cannot check it"
 
 
 class Extractor(Protocol):
@@ -40,6 +41,9 @@ class DocumentExtraction:
 
     def domain_range_warnings(self) -> list[str]:
         return [w for w in self.warnings if _DOMAIN_MARK in w or _RANGE_MARK in w]
+
+    def missing_type_warnings(self) -> list[str]:
+        return [w for w in self.warnings if _CANNOT_CHECK_MARK in w]
 
     def all_entities(self) -> list[ExtractedEntity]:
         return [e for c in self.chunks for e in c.entities]
@@ -63,7 +67,7 @@ def extract_document(
     doc = DocumentExtraction(source_id=parsed.source_id, parse_id=parsed.parse_id)
     entity_names = ontology.entity_names()
     relation_names = ontology.relation_names()
-    constraints = {r.name: (r.domain, r.range) for r in ontology.relation_types}
+    constraints = constraint_map(ontology)
 
     total = len(chunks)
     started = time.monotonic()
@@ -94,6 +98,11 @@ def extract_document(
     return doc
 
 
+def constraint_map(ontology: Ontology) -> dict[str, tuple[list[str], list[str]]]:
+    """Relation name -> (domain, range), as `_validate` expects."""
+    return {r.name: (r.domain, r.range) for r in ontology.relation_types}
+
+
 def _validate(
     result: ChunkExtraction,
     chunk_id: str,
@@ -122,7 +131,7 @@ def _validate(
                     role = "domain" if mark == _DOMAIN_MARK else "range"
                     warnings.append(
                         f"{chunk_id}: relation '{r.relation_type}' {_MISSING_MARK} "
-                        f"{role} type (for '{name}'); cannot check it"
+                        f"{role} type (for '{name}'); {_CANNOT_CHECK_MARK}"
                     )
                 elif _outside(t, allowed):
                     warnings.append(
