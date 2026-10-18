@@ -48,12 +48,18 @@ def document_to_dict(doc: DocumentExtraction) -> dict:
     return {
         "source_id": doc.source_id,
         "parse_id": doc.parse_id,
+        "prompt_fingerprint": doc.prompt_fingerprint,
         "warnings": doc.warnings,
         "failed_chunks": [{"chunk_id": cid, "error": err} for cid, err in doc.failed_chunks],
         "entities": [asdict(e) for e in doc.all_entities()],
         "relations": [asdict(r) for r in doc.all_relations()],
         "proposals": [asdict(p) for p in doc.all_proposals()],
     }
+
+
+def prompt_fingerprint_from_dict(data: dict) -> str | None:
+    """The recorded prompt fingerprint, or None for files written before it was."""
+    return data.get("prompt_fingerprint")
 
 
 def write_json(doc: DocumentExtraction, path: str | Path) -> Path:
@@ -70,6 +76,7 @@ def write_review_markdown(doc: DocumentExtraction, path: str | Path) -> Path:
         f"# Extraction review — {doc.source_id}",
         "",
         f"- Parse: `{doc.parse_id}`",
+        f"- Prompt: `{doc.prompt_fingerprint or 'unknown'}`",
         f"- Entities: {len(doc.all_entities())} · "
         f"Relations: {len(doc.all_relations())} · "
         f"Proposals: {len(doc.all_proposals())} "
