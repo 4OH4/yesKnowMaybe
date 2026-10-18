@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import random
 
+import pytest
+
 from dikms.extraction.pipeline import DocumentExtraction, extract_document
 from dikms.models import (
     ChunkExtraction,
@@ -82,7 +84,7 @@ def test_grouping_is_a_partition():
 
 
 class _Stub:
-    def extract(self, ontology, chunk):
+    def extract(self, ontology, chunk, on_retry=None):
         if chunk.ordinal == 1:
             raise RuntimeError("boom")
         prop = _prop("entity", "A", chunk.chunk_id)
@@ -134,3 +136,67 @@ def test_review_sheet_shows_every_distinct_description(tmp_path):
         assert f"quote {i}" in md
         assert f"why {i}" in md
     assert "Proposals: 5 (1 unique)" in md
+
+
+class _Throttled(Exception):
+    code = 429
+    status = "RESOURCE_EXHAUSTED"
+
+
+def test_pipeline_formats_retry_messages_with_chunk_number():
+    class Retrying:
+        def extract(self, ontology, chunk, on_retry=None):
+            if on_retry is not None:
+                on_retry(2, 15, _Throttled())
+            return ChunkExtraction(chunk_id=chunk.chunk_id)
+
+    ont = Ontology(version=1, entity_types=[], relation_types=[])
+    msgs: list[str] = []
+    extract_document(
+        _parsed(), ont, Retrying(), target_chars=100, max_chars=150,
+        progress=msgs.append,
+    )
+    retries = [m for m in msgs if "retry" in m]
+    assert retries and retries[0].startswith("chunk 1/")
+    assert "retry 2 in 15s (429 RESOURCE_EXHAUSTED)" in retries[0]
+
+
+def test_no_progress_means_no_on_retry_kwarg():
+    class Strict:
+        def extract(self, ontology, chunk):
+            return ChunkExtraction(chunk_id=chunk.chunk_id)
+
+    ont = Ontology(version=1, entity_types=[], relation_types=[])
+    doc = extract_document(_parsed(), ont, Strict(), target_chars=100, max_chars=150)
+    assert doc.chunks
+
+
+def test_on_retry_called_per_backoff_with_configured_delays(monkeypatch):
+    pytest.importorskip("google.genai")
+    from google.genai import errors
+
+    from dikms.extraction import client as client_mod
+
+    slept: list[float] = []
+    monkeypatch.setattr(client_mod.time, "sleep", slept.append)
+
+    class FakeModels:
+        calls = 0
+
+        def generate_content(self, **kw):
+            FakeModels.calls += 1
+            if FakeModels.calls <= 2:
+                raise errors.APIError(429, {"error": {"status": "RESOURCE_EXHAUSTED"}})
+            return "ok"
+
+    class FakeClient:
+        models = FakeModels()
+
+    ex = client_mod.GeminiExtractor("p", "l", "m", retry_backoff=(5, 15, 30))
+    seen = []
+    out = ex._generate_with_retry(
+        FakeClient(), "c", None, lambda k, d, e: seen.append((k, d, e.code))
+    )
+    assert out == "ok"
+    assert seen == [(1, 5, 429), (2, 15, 429)]
+    assert slept == [5, 15]

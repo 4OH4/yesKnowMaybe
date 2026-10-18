@@ -25,7 +25,7 @@ _MISSING_MARK = "missing"
 
 
 class Extractor(Protocol):
-    def extract(self, ontology: Ontology, chunk) -> ChunkExtraction: ...
+    def extract(self, ontology: Ontology, chunk, **kwargs) -> ChunkExtraction: ...
 
 
 @dataclass
@@ -74,8 +74,14 @@ def extract_document(
             progress(f"chunk {n}/{total} · {text} · {elapsed:.0f}s elapsed")
 
     for n, chunk in enumerate(chunks, start=1):
+        # Only passed under progress reporting, so other callers are untouched.
+        kwargs = {}
+        if progress is not None:
+            kwargs["on_retry"] = lambda k, delay, exc, n=n: report(
+                n, f"retry {k} in {delay:g}s ({_describe_error(exc)})"
+            )
         try:
-            result = extractor.extract(ontology, chunk)
+            result = extractor.extract(ontology, chunk, **kwargs)
         except Exception as exc:  # noqa: BLE001 — isolate one chunk's failure
             # Persist progress on the other chunks rather than losing the whole
             # document to one transient failure (e.g. quota exhaustion).
@@ -92,6 +98,12 @@ def extract_document(
             f"{len(doc.all_proposals())} proposals (running totals)",
         )
     return doc
+
+
+def _describe_error(exc: Exception) -> str:
+    found = (getattr(exc, "code", None), getattr(exc, "status", None))
+    parts = [str(p) for p in found if p]
+    return " ".join(parts) or type(exc).__name__
 
 
 def _validate(

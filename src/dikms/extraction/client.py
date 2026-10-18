@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Callable
 
 from ..models import (
     Chunk,
@@ -45,6 +46,9 @@ class ExtractionResponseError(RuntimeError):
 # rather than failing the run.
 _RETRY_BACKOFF = (5, 15, 30, 60, 60)
 _RETRYABLE_CODES = {429, 503}
+
+# Called before each backoff sleep: (retry number from 1, delay in seconds, error).
+RetryCallback = Callable[[int, float, Exception], None]
 
 
 class GeminiExtractor:
@@ -80,7 +84,12 @@ class GeminiExtractor:
             )
         return self._client
 
-    def extract(self, ontology: Ontology, chunk: Chunk) -> ChunkExtraction:
+    def extract(
+        self,
+        ontology: Ontology,
+        chunk: Chunk,
+        on_retry: RetryCallback | None = None,
+    ) -> ChunkExtraction:
         from google.genai import types
 
         client = self._get_client()
@@ -90,11 +99,13 @@ class GeminiExtractor:
             response_mime_type="application/json",
         )
         contents = build_user_prompt(ontology, chunk)
-        response = self._generate_with_retry(client, contents, config)
+        response = self._generate_with_retry(client, contents, config, on_retry)
         raw = response.text or ""
         return parse_response(raw, chunk, self.model)
 
-    def _generate_with_retry(self, client, contents, config):
+    def _generate_with_retry(
+        self, client, contents, config, on_retry: RetryCallback | None = None
+    ):
         from google.genai import errors
 
         for attempt, wait in enumerate((*self.retry_backoff, None)):
@@ -107,6 +118,8 @@ class GeminiExtractor:
                 # rest (bad request, auth, etc.) immediately.
                 if getattr(exc, "code", None) not in _RETRYABLE_CODES or wait is None:
                     raise
+                if on_retry is not None:
+                    on_retry(attempt + 1, wait, exc)
                 time.sleep(wait)
 
 
