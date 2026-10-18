@@ -349,6 +349,21 @@ transitivity constraint under Entity Resolution. Spanner and its service account
 are provisioned as Terraform (`terraform/`); running `apply` is a manual human
 step, but the embedded Kùzu path needs none of that.
 
+**Node identity.** A write of an entity names its node by
+`dikms.storage.node_key(label, name)`: the label plus the name with only
+Unicode compatibility forms, case and whitespace normalised away. Two mentions
+with that key are one stored node; anything else (abbreviations, aliases,
+`F-35` vs `F35`) stays a separate node for entity resolution to link with
+`same_as`. This is a write key, not resolution, and it errs towards separate
+nodes, since a duplicate is recoverable and a wrong merge is not.
+
+**Kùzu vector search is an exact scan.** The locked Kùzu release (0.11.3)
+cannot update a column under its HNSW vector index, and dropping the index
+leaves the table unwritable, so the Kùzu backend computes cosine similarity
+over every stored vector instead. That is exact, and fast enough at this
+corpus's scale (about 30 ms for 1,000 vectors at 3,072 dimensions). The
+details are in `src/dikms/storage/kuzu_backend.py`.
+
 ### Schema decisions worth stating outside the code
 
 The declarative schema lives in `src/dikms/storage/schema.py`, which carries the
