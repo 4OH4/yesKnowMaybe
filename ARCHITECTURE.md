@@ -352,8 +352,9 @@ step, but the embedded Kùzu path needs none of that.
 ### Schema decisions worth stating outside the code
 
 The declarative schema lives in `src/dikms/storage/schema.py`, which carries the
-full element-by-element Kùzu ↔ Spanner Graph mapping. Five choices there are
-design decisions rather than implementation detail:
+full element-by-element Kùzu ↔ Spanner Graph mapping. Five choices in the
+storage layer (mostly in `src/dikms/storage/schema.py`) are design decisions
+rather than implementation detail:
 
 - **Node labels and edge types are derived from `config/ontology.yaml`**, never
   listed in code, so the ontology file stays the only place types are defined.
