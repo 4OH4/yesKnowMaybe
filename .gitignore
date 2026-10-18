@@ -26,9 +26,12 @@ application_default_credentials.json
 data/corpus/
 output/
 
-# Embedded Kùzu knowledge store (storage adapter's local backend)
+# Embedded Kùzu knowledge store (storage adapter's local backend). Kùzu 0.11
+# keeps the database in one file, with .wal/.shadow siblings while it is open.
 data/graph.kuzu/
 *.kuzu
+*.kuzu.wal
+*.kuzu.shadow
 
 # Terraform local state
 terraform/.terraform/
