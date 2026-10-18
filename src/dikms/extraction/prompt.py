@@ -12,6 +12,8 @@ The prompt enforces the design constraints directly:
 
 from __future__ import annotations
 
+import hashlib
+
 from ..models import Chunk
 from ..ontology import Ontology
 
@@ -68,6 +70,24 @@ Respond with JSON of exactly this shape:
   ]
 }
 Use empty arrays where there is nothing to report."""
+
+
+FINGERPRINT_LENGTH = 12
+
+
+def prompt_fingerprint() -> str:
+    """Short fingerprint of the prompt text sent to the model.
+
+    SHA-256 over `SYSTEM_INSTRUCTION` and the response schema, truncated to 12
+    hex characters. The ontology is not included: it is versioned separately.
+    A run-level property, recorded once per document, so outputs produced by
+    different prompts can be told apart at a glance.
+    """
+    digest = hashlib.sha256()
+    for part in (SYSTEM_INSTRUCTION, _SCHEMA):
+        digest.update(part.encode("utf-8"))
+        digest.update(b"\x00")  # separator, so text cannot slide between parts
+    return digest.hexdigest()[:FINGERPRINT_LENGTH]
 
 
 def build_user_prompt(ontology: Ontology, chunk: Chunk) -> str:
