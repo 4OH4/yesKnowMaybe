@@ -80,9 +80,10 @@ Required property     **no DDL equivalent** — Kùzu   ``NOT NULL``
 Property default      column ``DEFAULT``             column ``DEFAULT``
 Enum-valued property  ``STRING`` + validation here   ``STRING(MAX)`` + validation
                       (neither backend has a native enum type)
-Vector property       ``FLOAT[<dim>]`` + the         ``ARRAY<FLOAT32>`` +
-                      ``VECTOR`` extension's HNSW    ``VECTOR INDEX`` with
-                      index                          ``COSINE`` distance
+Vector property       ``FLOAT[<dim>]``, searched by  ``ARRAY<FLOAT32>`` +
+                      an exact cosine scan (0.11.3's ``VECTOR INDEX`` with
+                      HNSW index cannot be updated;  ``COSINE`` distance
+                      see ``kuzu_backend``)
 Numeric range         validation here (Kùzu has no   validation here (no ``CHECK``
 (e.g. ``confidence``) ``CHECK`` constraint)          is declared, to match)
 Arbitrary edge props  properties on a REL table      columns on the edge input table
