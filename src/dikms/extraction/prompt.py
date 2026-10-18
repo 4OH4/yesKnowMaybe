@@ -4,9 +4,10 @@ The prompt enforces the design constraints directly:
 * entities/relations must use only the current ontology's types;
 * anything important that does not fit becomes a *proposal* (HITL gating —
   the model proposes, it never extends the ontology itself);
-* every item must carry a verbatim supporting quote from the chunk, and the
-  model is told NOT to emit character offsets (offsets are derived later by
-  verified alignment, not trusted from the model).
+* every item must carry a verbatim supporting quote from the chunk, taken from
+  one contiguous passage with no words skipped by an ellipsis (DECISIONS.md,
+  issue #23), and the model is told NOT to emit character offsets (offsets are
+  derived later by verified alignment, not trusted from the model).
 """
 
 from __future__ import annotations
@@ -27,8 +28,12 @@ NOT fit any ontology type, do not force it — instead add an item to \
 human; they never change the ontology automatically.
 3. For every entity, relation and proposal, include a `quote`: a SHORT span of \
 text copied VERBATIM from the provided chunk that supports the item. Copy it \
-exactly, character for character. Never paraphrase the quote and never invent \
-character positions or offsets.
+exactly, character for character. The quote must be ONE CONTIGUOUS passage of \
+the chunk, never phrases joined together from separate places; if the support \
+is spread out, quote the single most supportive passage. Never skip words with \
+an ellipsis ("..." or "…"): a quote may contain an ellipsis only where the chunk \
+itself contains one. Never paraphrase the quote and never invent character \
+positions or offsets.
 4. Extract only what the text supports. Do not add outside knowledge.
 5. Populate an entity's declared `attributes` where the text supports them, \
 choosing from the controlled vocabulary when one is listed; omit any attribute \
