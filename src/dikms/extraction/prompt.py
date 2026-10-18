@@ -75,16 +75,27 @@ Use empty arrays where there is nothing to report."""
 FINGERPRINT_LENGTH = 12
 
 
-def prompt_fingerprint() -> str:
-    """Short fingerprint of the prompt text sent to the model.
+# Per-chunk framing around the chunk text. Sent on every call, so hashed.
+_CHUNK_TEMPLATE = (
+    "--- CHUNK (source: {source_id}, {section_refs}) ---\n"
+    "{text}\n"
+    "--- END CHUNK ---"
+)
+_NO_SECTION_REF = "no section ref"
 
-    SHA-256 over `SYSTEM_INSTRUCTION` and the response schema, truncated to 12
-    hex characters. The ontology is not included: it is versioned separately.
-    A run-level property, recorded once per document, so outputs produced by
-    different prompts can be told apart at a glance.
+
+def prompt_fingerprint() -> str:
+    """Short fingerprint of the fixed prompt text sent to the model.
+
+    SHA-256 over `SYSTEM_INSTRUCTION`, the response schema, the chunk framing
+    template and its "no section ref" placeholder, truncated to 12 hex
+    characters. NOT covered: the rendered ontology (`render_for_prompt()`; the
+    hand-bumped `ontology_version` only partly tracks it, and covering it is a
+    tracked follow-up) and the chunk text itself. A run-level property,
+    recorded once per document.
     """
     digest = hashlib.sha256()
-    for part in (SYSTEM_INSTRUCTION, _SCHEMA):
+    for part in (SYSTEM_INSTRUCTION, _SCHEMA, _CHUNK_TEMPLATE, _NO_SECTION_REF):
         digest.update(part.encode("utf-8"))
         digest.update(b"\x00")  # separator, so text cannot slide between parts
     return digest.hexdigest()[:FINGERPRINT_LENGTH]
@@ -95,7 +106,9 @@ def build_user_prompt(ontology: Ontology, chunk: Chunk) -> str:
     return (
         f"{ontology.render_for_prompt()}\n\n"
         f"{_SCHEMA}\n\n"
-        f"--- CHUNK (source: {chunk.source_id}, {', '.join(chunk.section_refs) or 'no section ref'}) ---\n"
-        f"{chunk.text}\n"
-        f"--- END CHUNK ---"
+        + _CHUNK_TEMPLATE.format(
+            source_id=chunk.source_id,
+            section_refs=", ".join(chunk.section_refs) or _NO_SECTION_REF,
+            text=chunk.text,
+        )
     )

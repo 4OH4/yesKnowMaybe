@@ -38,9 +38,15 @@ def _line_indices(text: str) -> list[int]:
 
 
 def _edit_line(text: str, i: int) -> str:
-    lines = text.splitlines()
-    lines[i] += " x"
-    return "\n".join(lines)
+    lines = text.splitlines(keepends=True)
+    body = lines[i].rstrip("\r\n")
+    lines[i] = body + " x" + lines[i][len(body):]
+    return "".join(lines)
+
+
+@pytest.mark.parametrize("text", [prompt.SYSTEM_INSTRUCTION, prompt._SCHEMA])
+def test_unedited_round_trip_is_exact(text):
+    assert "".join(text.splitlines(keepends=True)) == text
 
 
 @pytest.mark.parametrize("i", _line_indices(prompt.SYSTEM_INSTRUCTION))
@@ -85,3 +91,22 @@ def test_old_format_file_reads_as_unknown():
         "entities": [], "relations": [], "proposals": [],
     }
     assert prompt_fingerprint_from_dict(old) is None
+
+
+def test_changing_chunk_framing_changes_fingerprint(monkeypatch):
+    base = prompt.prompt_fingerprint()
+    monkeypatch.setattr(prompt, "_CHUNK_TEMPLATE", prompt._CHUNK_TEMPLATE + "!")
+    assert prompt.prompt_fingerprint() != base
+    monkeypatch.undo()
+    monkeypatch.setattr(prompt, "_NO_SECTION_REF", "none")
+    assert prompt.prompt_fingerprint() != base
+
+
+def test_user_prompt_framing_unchanged_by_refactor(ontology: Ontology):
+    from dikms.models import Chunk
+
+    chunk = Chunk(chunk_id="c", source_id="s", parse_id="p", ordinal=0, text="body",
+                  start=0, end=4, section_refs=[])
+    out = prompt.build_user_prompt(ontology, chunk)
+    expected = "--- CHUNK (source: s, no section ref) ---\nbody\n--- END CHUNK ---"
+    assert out.endswith(expected)
