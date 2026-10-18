@@ -1,17 +1,26 @@
-"""Behavioural tests for the adapter base class, via an in-memory stub.
+"""Behavioural tests for the adapter base class and its shared contract.
 
-The stub is not a backend — it exists so the shared, non-abstract behaviour in
+Most tests run on the in-memory stub (``stub_adapter.py``), which is not a
+backend: it exists so the shared, non-abstract behaviour in
 :class:`dikms.storage.StorageAdapter` (write validation, endpoint rules,
-traversal result helpers) is exercised without a database. Real backends are
-separate tickets.
+traversal result helpers) is exercised without a database, and many of those
+tests inspect what it stored directly.
+
+The contract tests marked ``@both_backends`` (edge reads, ``same_as``
+verdicts) use only the adapter interface and also run against the Kùzu
+backend, through the parametrised ``adapter`` fixture. That is the proof that
+a real backend honours the canonical-order and verdict-keeping contract, not
+only the stub.
 """
 
 from __future__ import annotations
 
 import itertools
+from collections.abc import Iterable
 from typing import Any
 
 import pytest
+from stub_adapter import StubAdapter
 
 from dikms.models import Provenance
 from dikms.storage import (
@@ -24,7 +33,6 @@ from dikms.storage import (
     NodeRef,
     PathStep,
     PropertyType,
-    ProvenanceHit,
     SchemaViolation,
     SimilarityHit,
     StorageAdapter,
@@ -37,71 +45,40 @@ from dikms.storage import (
 from dikms.storage.schema import SOURCE_LABEL
 
 
-class StubAdapter(StorageAdapter):
-    """Minimal concrete adapter: records writes, answers nothing clever.
-
-    Writes merge into what is stored, as Kùzu's ``MERGE ... SET`` and
-    Spanner's ``insert_or_update`` do: a key the prepared dict leaves out
-    keeps its old value. That makes the full-overwrite rule observable.
-    Endpoint existence is checked only with ``require_existing_endpoints``,
-    so the many tests of edge validation need not create nodes first.
-    """
-
-    def __init__(
-        self, schema: GraphSchema, *, require_existing_endpoints: bool = False
-    ) -> None:
-        super().__init__(schema)
-        self.nodes: dict[tuple[str, str], dict[str, Any]] = {}
-        self.edges: dict[EdgeRef, dict[str, Any]] = {}
-        self.initialised = False
-        self.require_existing_endpoints = require_existing_endpoints
-
-    def initialise_schema(self) -> None:
-        self.initialised = True
-
-    def upsert_node(self, label, node_id, properties):
-        props = self.prepare_node(label, node_id, properties)
-        self.nodes.setdefault((label, node_id), {}).update(props)
-        return NodeRef(label, node_id)
-
-    def upsert_edge(self, edge_type, source, target, properties):
-        ref, props = self.prepare_edge(edge_type, source, target, properties)
-        if self.require_existing_endpoints:
-            self.require_endpoints(ref.source, ref.target)
-        self.edges.setdefault(ref, {}).update(props)  # keyed as the schema says
-        return ref
-
-    def get_node(self, ref):
-        props = self.nodes.get((ref.label, ref.id))
-        return None if props is None else NodeRecord(ref, props)
-
-    def get_edge(self, ref):
-        key = self.canonical_edge_ref(ref)  # as the contract requires
-        props = self.edges.get(key)
-        return None if props is None else EdgeRecord(key, dict(props))
-
-    def traverse(
-        self,
-        start,
-        *,
-        edge_types=None,
-        max_hops=1,
-        direction=Direction.BOTH,
-        target_labels=None,
-        limit=None,
-    ) -> list[TraversalResult]:
-        return []
-
-    def similar_nodes(self, label, embedding, *, limit=10, min_score=None):
-        return []
-
-    def trace_back(self, subject) -> list[ProvenanceHit]:
-        return []
-
-
 @pytest.fixture()
-def adapter(schema: GraphSchema) -> StubAdapter:
-    return StubAdapter(schema)
+def adapter(request: pytest.FixtureRequest, schema: GraphSchema) -> StorageAdapter:
+    """The stub by default; ``@both_backends`` parametrises it over the stub
+    (which then requires endpoints to exist, as a real backend does) and the
+    Kùzu backend in a temporary directory."""
+    backend = getattr(request, "param", "stub")
+    if backend == "kuzu":
+        return request.getfixturevalue("open_kuzu")()
+    return StubAdapter(schema, require_existing_endpoints=backend == "stub-strict")
+
+
+#: Run a test against the stub and against every real backend.
+both_backends = pytest.mark.parametrize(
+    "adapter", ["stub-strict", "kuzu"], indirect=True
+)
+
+
+def _ensure_nodes(adapter: StorageAdapter, refs: Iterable[NodeRef]) -> None:
+    """Write a minimal, fully provenanced node for each ref not yet stored,
+    so an edge test can run on a backend that requires its endpoints."""
+    for ref in refs:
+        if adapter.get_node(ref) is not None:
+            continue
+        if ref.label == SOURCE_LABEL:
+            props = {
+                "id": ref.id,
+                "title": f"Source {ref.id}",
+                "url": f"https://example.org/{ref.id}",
+                "authoritativeness": "medium",
+                "ingested_at": "2026-07-24T09:00:00+00:00",
+            }
+        else:
+            props = _programme(ref.id, ref.id)
+        adapter.upsert_node(ref.label, ref.id, props)
 
 
 def _provenance() -> Provenance:
@@ -549,13 +526,15 @@ def test_an_edge_to_a_missing_node_raises_and_writes_nothing(
 # -- edge reads -------------------------------------------------------------
 
 
+@both_backends
 def test_get_edge_finds_a_same_as_pair_named_either_way_round(
-    adapter: StubAdapter,
+    adapter: StorageAdapter,
 ) -> None:
-    a, b = NodeRef("Programme", "p:a"), NodeRef("Programme", "p:b")
-    assert adapter.get_edge(EdgeRef("same_as", a, b)) is None
-    for written in ((a, b), (b, a)):
-        adapter.edges.clear()
+    for i, flipped in enumerate((False, True)):
+        a, b = NodeRef("Programme", f"p:a{i}"), NodeRef("Programme", f"p:b{i}")
+        _ensure_nodes(adapter, (a, b))
+        assert adapter.get_edge(EdgeRef("same_as", a, b)) is None
+        written = (b, a) if flipped else (a, b)
         stored = adapter.upsert_edge("same_as", *written, _same_as(0.7))
         for asked in ((a, b), (b, a)):
             record = adapter.get_edge(EdgeRef("same_as", *asked))
@@ -564,8 +543,9 @@ def test_get_edge_finds_a_same_as_pair_named_either_way_round(
             assert record.properties["confidence"] == 0.7
 
 
+@both_backends
 def test_get_edge_reads_the_key_every_write_is_stored_under(
-    adapter: StubAdapter, schema: GraphSchema
+    adapter: StorageAdapter, schema: GraphSchema
 ) -> None:
     """Over every edge type, every endpoint pair it permits and both ways of
     naming two distinct ids: the key a read resolves to is the key the write
@@ -580,6 +560,7 @@ def test_get_edge_reads_the_key_every_write_is_stored_under(
                     src = NodeRef(SOURCE_LABEL, props["source_id"])
                 if target_label == SOURCE_LABEL:
                     tgt = NodeRef(SOURCE_LABEL, props["source_id"])
+                _ensure_nodes(adapter, (src, tgt))
                 write = _same_as() if edge.type == "same_as" else props
                 written = adapter.upsert_edge(edge.type, src, tgt, write)
                 asks = [EdgeRef(edge.type, src, tgt, written.source_id,
@@ -594,12 +575,14 @@ def test_get_edge_reads_the_key_every_write_is_stored_under(
     assert checked
 
 
+@both_backends
 def test_get_edge_refuses_a_ref_that_names_no_single_edge(
-    adapter: StubAdapter,
+    adapter: StorageAdapter,
 ) -> None:
     org, prog = NodeRef("Organisation", "o:bae"), NodeRef("Programme", "p:asgard")
     a, b = NodeRef("Programme", "p:a"), NodeRef("Programme", "p:b")
     props = provenance_properties(_provenance())
+    _ensure_nodes(adapter, (org, prog, a, b))
     occurrence = adapter.upsert_edge("develops", org, prog, props)
     assert adapter.get_edge(occurrence).properties["chunk_id"] == "chunk-3"
 
@@ -618,7 +601,8 @@ def test_get_edge_refuses_a_ref_that_names_no_single_edge(
         adapter.get_edge(EdgeRef("wobbles", a, b))
 
 
-def test_get_edge_returns_none_for_an_absent_edge(adapter: StubAdapter) -> None:
+@both_backends
+def test_get_edge_returns_none_for_an_absent_edge(adapter: StorageAdapter) -> None:
     """Including one whose endpoint nodes were never written."""
     org, prog = NodeRef("Organisation", "o:none"), NodeRef("Programme", "p:none")
     assert adapter.get_edge(EdgeRef("develops", org, prog, "src", "c")) is None
@@ -631,25 +615,47 @@ def test_get_edge_returns_none_for_an_absent_edge(adapter: StubAdapter) -> None:
 _PAIR = (NodeRef("Programme", "p:a"), NodeRef("Programme", "p:b"))
 
 
-def _stored_same_as(adapter: StubAdapter) -> dict[str, Any]:
-    same_as = {r: p for r, p in adapter.edges.items() if r.type == "same_as"}
-    assert len(same_as) == 1, same_as  # one pair, one stored claim
-    ((ref, props),) = same_as.items()
-    assert (ref.source, ref.target) == _PAIR
-    return props
+def _same_as_edges(
+    adapter: StorageAdapter, pair: tuple[NodeRef, NodeRef]
+) -> list[EdgeRecord]:
+    """Every stored ``same_as`` edge between the two nodes, either way round:
+    read from the stub's own store, or through ``traverse`` on a backend."""
+    a, b = pair
+    if isinstance(adapter, StubAdapter):
+        keys = {EdgeRef("same_as", a, b), EdgeRef("same_as", b, a)}
+        return [EdgeRecord(k, adapter.edges[k]) for k in keys if k in adapter.edges]
+    return [
+        path.steps[0].edge
+        for path in adapter.traverse(a, edge_types=["same_as"], max_hops=1)
+        if path.end is not None and path.end.ref == b
+    ]
 
 
+def _stored_same_as(
+    adapter: StorageAdapter, pair: tuple[NodeRef, NodeRef] = _PAIR
+) -> dict[str, Any]:
+    edges = _same_as_edges(adapter, pair)
+    assert len(edges) == 1, edges  # one pair, one stored claim
+    (edge,) = edges
+    assert (edge.ref.source, edge.ref.target) == tuple(
+        sorted(pair, key=lambda n: (n.label, n.id))
+    )
+    return dict(edge.properties)
+
+
+@both_backends
 @pytest.mark.parametrize("verdict", ["rejected", "confirmed"])
 @pytest.mark.parametrize("first", [_PAIR, _PAIR[::-1]], ids=["A->B", "B->A"])
 @pytest.mark.parametrize("again", [_PAIR, _PAIR[::-1]], ids=["A->B", "B->A"])
 def test_a_re_proposal_keeps_the_human_verdict(
-    adapter: StubAdapter,
+    adapter: StorageAdapter,
     verdict: str,
     first: tuple[NodeRef, NodeRef],
     again: tuple[NodeRef, NodeRef],
 ) -> None:
     """The issue's probe: a human rejects (or confirms) the pair, then
     resolution proposes it again, either way round, with a new confidence."""
+    _ensure_nodes(adapter, _PAIR)
     write_same_as(
         adapter, *first, confidence=0.6, method="human", review_status=verdict,
         created_at="2026-07-25T00:00:00Z",
@@ -663,20 +669,24 @@ def test_a_re_proposal_keeps_the_human_verdict(
     assert stored["created_at"] == "2026-07-25T00:00:00.000000+00:00"
 
 
+@both_backends
 @pytest.mark.parametrize("new", ["confirmed", "rejected", "unreviewed"])
 @pytest.mark.parametrize("old", ["confirmed", "rejected"])
 def test_an_explicit_verdict_overwrites_the_stored_one(
-    adapter: StubAdapter, old: str, new: str
+    adapter: StorageAdapter, old: str, new: str
 ) -> None:
     a, b = _PAIR
+    _ensure_nodes(adapter, _PAIR)
     write_same_as(adapter, a, b, confidence=0.5, method="human", review_status=old)
     write_same_as(adapter, b, a, confidence=0.5, method="human", review_status=new)
     assert _stored_same_as(adapter)["review_status"] == new
 
 
-def test_a_first_proposal_is_unreviewed_and_dated(adapter: StubAdapter) -> None:
+@both_backends
+def test_a_first_proposal_is_unreviewed_and_dated(adapter: StorageAdapter) -> None:
     from datetime import UTC, datetime
 
+    _ensure_nodes(adapter, _PAIR)
     before = datetime.now(UTC)
     write_same_as(adapter, *_PAIR, confidence=0.8, method="embedding")
     stored = _stored_same_as(adapter)
@@ -694,9 +704,11 @@ def test_the_unreviewed_status_is_the_schema_default(schema: GraphSchema) -> Non
     assert UNREVIEWED in SAME_AS_REVIEW_STATES
 
 
+@both_backends
 def test_a_refused_re_proposal_leaves_the_verdict_alone(
-    adapter: StubAdapter,
+    adapter: StorageAdapter,
 ) -> None:
+    _ensure_nodes(adapter, _PAIR)
     write_same_as(
         adapter, *_PAIR, confidence=0.5, method="human", review_status="rejected"
     )
@@ -708,47 +720,63 @@ def test_a_refused_re_proposal_leaves_the_verdict_alone(
     assert _stored_same_as(adapter) == before
 
 
-def test_a_re_proposal_needs_both_nodes_to_exist(schema: GraphSchema) -> None:
-    adapter = StubAdapter(schema, require_existing_endpoints=True)
+@both_backends
+def test_a_re_proposal_needs_both_nodes_to_exist(adapter: StorageAdapter) -> None:
     with pytest.raises(MissingNodeError):
         write_same_as(adapter, *_PAIR, confidence=0.5, method="alias")
-    assert adapter.edges == {}
+    _ensure_nodes(adapter, _PAIR[:1])
+    with pytest.raises(MissingNodeError, match="p:b"):
+        write_same_as(adapter, *_PAIR, confidence=0.5, method="alias")
+    assert adapter.get_edge(EdgeRef("same_as", *_PAIR)) is None
 
 
+@both_backends
 def test_review_status_follows_the_last_explicit_verdict_over_any_history(
-    schema: GraphSchema,
+    adapter: StorageAdapter,
 ) -> None:
     """Exhaustive over every sequence of up to three writes, each one either
     way round, with or without a verdict and with one of two confidences: the
     stored status is the last explicit verdict (``unreviewed`` if none was
     ever given), the automated fields are always the last write's, and
-    ``created_at`` is the first write's. One stored edge throughout."""
+    ``created_at`` is the first write's. One stored edge throughout. Each
+    sequence writes its own pair, so sequences cannot see each other's edges.
+
+    On a real backend, to keep the suite fast, sequences are up to two writes
+    with one confidence (72 sequences); the confidence update is covered on
+    every backend by ``test_a_re_proposal_keeps_the_human_verdict``."""
+    on_stub = isinstance(adapter, StubAdapter)
     statuses = (None, "unreviewed", "confirmed", "rejected")
-    writes = list(itertools.product((_PAIR, _PAIR[::-1]), statuses, (0.3, 0.9)))
+    confidences = (0.3, 0.9) if on_stub else (0.3,)
+    writes = list(itertools.product((False, True), statuses, confidences))
+    lengths = (1, 2, 3) if on_stub else (1, 2)
     first_stamp = "2026-01-01T00:00:00Z"
     sequences = 0
-    for length in (1, 2, 3):
+    for length in lengths:
         for sequence in itertools.product(writes, repeat=length):
-            adapter = StubAdapter(schema)
-            for i, (pair, status, confidence) in enumerate(sequence):
+            pair = (
+                NodeRef("Programme", f"p:a{sequences}"),
+                NodeRef("Programme", f"p:b{sequences}"),
+            )
+            _ensure_nodes(adapter, pair)
+            for i, (flipped, status, confidence) in enumerate(sequence):
                 # Only the first write names a created_at; later ones must
                 # keep it rather than restamp the pair.
                 write_same_as(
-                    adapter, *pair, confidence=confidence, method="llm",
-                    review_status=status,
+                    adapter, *(pair[::-1] if flipped else pair),
+                    confidence=confidence, method="llm", review_status=status,
                     created_at=first_stamp if i == 0 else None,
                 )
             explicit = [s for _, s, _ in sequence if s is not None]
             expected = explicit[-1] if explicit else "unreviewed"
-            stored = _stored_same_as(adapter)
+            stored = _stored_same_as(adapter, pair)
             assert stored["review_status"] == expected, sequence
             assert stored["confidence"] == sequence[-1][2], sequence
             assert stored["created_at"] == normalise_timestamp(first_stamp)
-            for pair in (_PAIR, _PAIR[::-1]):
-                record = adapter.get_edge(EdgeRef("same_as", *pair))
+            for asked in (pair, pair[::-1]):
+                record = adapter.get_edge(EdgeRef("same_as", *asked))
                 assert record is not None and record.properties == stored
             sequences += 1
-    assert sequences == len(writes) + len(writes) ** 2 + len(writes) ** 3
+    assert sequences == sum(len(writes) ** n for n in lengths)
 
 
 # -- read helpers -----------------------------------------------------------
