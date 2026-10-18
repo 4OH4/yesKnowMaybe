@@ -48,12 +48,18 @@ def document_to_dict(doc: DocumentExtraction) -> dict:
     return {
         "source_id": doc.source_id,
         "parse_id": doc.parse_id,
+        "ontology_version": doc.ontology_version,
         "warnings": doc.warnings,
         "failed_chunks": [{"chunk_id": cid, "error": err} for cid, err in doc.failed_chunks],
         "entities": [asdict(e) for e in doc.all_entities()],
         "relations": [asdict(r) for r in doc.all_relations()],
         "proposals": [asdict(p) for p in doc.all_proposals()],
     }
+
+
+def ontology_version_from_dict(data: dict) -> int | None:
+    """The recorded ontology version, or None for files written before it was."""
+    return data.get("ontology_version")
 
 
 def write_json(doc: DocumentExtraction, path: str | Path) -> Path:

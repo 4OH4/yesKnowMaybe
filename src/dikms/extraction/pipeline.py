@@ -37,6 +37,10 @@ class DocumentExtraction:
     # (chunk_id, error) for chunks that could not be extracted. Recorded, not
     # silently dropped, so partial output is honest about what is missing.
     failed_chunks: list[tuple[str, str]] = field(default_factory=list)
+    # Version of the ontology the types below were drawn from. Document-level
+    # metadata, not per-fact provenance. None means unknown (a file written
+    # before this was recorded).
+    ontology_version: int | None = None
 
     def domain_range_warnings(self) -> list[str]:
         return [w for w in self.warnings if _DOMAIN_MARK in w or _RANGE_MARK in w]
@@ -60,7 +64,11 @@ def extract_document(
     progress: Callable[[str], None] | None = None,
 ) -> DocumentExtraction:
     chunks = chunk_document(parsed, target_chars=target_chars, max_chars=max_chars)
-    doc = DocumentExtraction(source_id=parsed.source_id, parse_id=parsed.parse_id)
+    doc = DocumentExtraction(
+        source_id=parsed.source_id,
+        parse_id=parsed.parse_id,
+        ontology_version=ontology.version,
+    )
     entity_names = ontology.entity_names()
     relation_names = ontology.relation_names()
     constraints = {r.name: (r.domain, r.range) for r in ontology.relation_types}
