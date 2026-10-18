@@ -40,8 +40,9 @@ How a fact reaches its ``Source`` depends on what the fact is:
   properties and traces back through its own ``source_id``/``chunk_id``.
   It has no ``extracted_from`` edge: a property-graph edge cannot start
   from another edge, in Kùzu or Spanner Graph, so ``extracted_from``'s
-  source labels are the entity labels only, narrower than the ontology's
-  ``domain: ["*"]`` and its "any extracted entity/relation" description.
+  source labels are the entity labels only, as the ontology's description
+  says. That excludes ``Source`` itself, so it is narrower than the
+  ontology's ``domain: ["*"]``.
 
 Identity (CLAUDE.md constraint 2)
 ---------------------------------

@@ -97,10 +97,10 @@ extraction is run):**
 - `supports` (Organisation/Programme → Programme/Capability/Term) — v2
 - `governs` (Organisation → Programme/Organisation) — v2
 - `member_of` (Organisation → Organisation) — v2
-- `extracted_from` (any entity/relation → Source) — the provenance edge,
-  mandatory on every extraction. In the stored graph only an entity has this
-  edge; a relation carries the same provenance as its own properties (see
-  Knowledge store → Schema decisions)
+- `extracted_from` (any extracted entity → Source) — the provenance edge,
+  mandatory on every extracted entity. A relation has no such edge; it carries
+  the same provenance as its own properties (see Knowledge store → Schema
+  decisions)
 - `same_as` — confidence-weighted, see Entity Resolution below
 - `mentions` (Source → any entity) — lighter-weight than a substantive
   relation, used for "mention of existing data" review-queue items
@@ -376,8 +376,8 @@ design decisions rather than implementation detail:
 - **A relation traces back through its own `source_id`, not an
   `extracted_from` edge.** A property-graph edge cannot start from another
   edge, in Kùzu or Spanner Graph, so `extracted_from` runs from entity nodes
-  to `Source` only, narrower than the ontology's "any entity/relation". A
-  relation instead carries the full provenance block (`source_id`,
+  to `Source` only, as the ontology's description says. A relation
+  instead carries the full provenance block (`source_id`,
   `chunk_id`, `section_refs`, `supporting_quote`, `extraction_model`,
   `extracted_at`, span fields) as its own properties. Because relation edges
   are keyed per extraction, each stored edge is one extraction, and its

@@ -60,6 +60,36 @@ model to stop.
 
 ---
 
+### `extracted_from` covers extracted entities only; relations carry provenance as properties
+**Decision:** Approved (HITL, #28): the `extracted_from` description in
+`config/ontology.yaml` now says the edge runs from an extracted entity to its
+`Source`, one per extraction, and that a relation has no such edge but carries
+the same provenance block as its own properties and traces back through its
+`source_id`. Only the description changes. `domain` stays `["*"]`, which ranges
+over node labels anyway, and `range`, `structural` and every other type are
+untouched. The ontology stays at **version 3**: the file's rule is to bump
+"whenever a type is added, removed or materially redefined", and this corrects
+the prose to match the model the store already implements rather than
+redefining the type. Nothing derived from the ontology changes:
+`extracted_from` is structural, so it is not in the extraction prompt, and the
+storage schema built from the file is identical before and after.
+**Why:** A property-graph edge cannot start from another edge, in Kùzu or
+Spanner Graph, so the storage schema from #3 (PR #15) limits `extracted_from`
+to entity endpoints and has each relation carry `source_id`, `chunk_id` and
+the rest of the provenance block itself (ARCHITECTURE.md → Knowledge store →
+Schema decisions). The old wording, "from any extracted entity/relation",
+promised relation→`Source` edges that cannot exist, and the ingestion path
+(#10) had been specified against it; its acceptance criterion is amended to
+match. Full traceability (constraint 1) is unaffected: every relation still
+resolves to its `Source` through its own `source_id`.
+**Alternatives considered:** leave the wording — rejected, the ontology would
+disagree with the schema and anyone reading it would expect edges that don't
+exist; reify each relation as a node so it can carry an `extracted_from` edge
+— rejected, it changes the graph's shape for every fact to recover provenance
+the relation already holds as properties.
+
+---
+
 ### Build automation: GitHub Issues and a Project board, run by lead/worker/reviewer agents; Linear dropped
 **Decision:** The backlog moves from Linear to GitHub Issues on this repo,
 tracked on a GitHub Project board (Backlog → Ready → In progress → Agent
