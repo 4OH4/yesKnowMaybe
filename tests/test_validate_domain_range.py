@@ -118,7 +118,7 @@ def test_extract_document_records_and_counts_domain_range_warnings():
     ont = _ontology(["Organisation"], ["Programme"])
 
     class Stub:
-        def extract(self, ontology, chunk):
+        def extract(self, ontology, chunk, on_retry=None):
             return ChunkExtraction(
                 chunk_id=chunk.chunk_id,
                 relations=[
@@ -131,7 +131,8 @@ def test_extract_document_records_and_counts_domain_range_warnings():
         source_id="s", fmt=next(iter(SourceFormat)), parser="t", parse_id="p",
         text="Some text.",
     )
-    doc = extract_document(parsed, ont, Stub())
+    doc = extract_document(parsed, ont, Stub(), progress=lambda m: None)
+    assert not doc.failed_chunks
     assert doc.chunks
     assert any("outside declared domain" in w for w in doc.warnings)
     assert len(doc.domain_range_warnings()) == 1  # missing type not counted
