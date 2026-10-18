@@ -270,6 +270,7 @@ class KuzuAdapter(StorageAdapter):
     def _reconcile_columns(
         self, table: str, properties: Iterable[PropertyDef]
     ) -> None:
+        _ident(table)  # refuse a non-identifier before it reaches the string
         existing = {
             row[1]: str(row[2])
             for row in self._rows(f"CALL TABLE_INFO('{table}') RETURN *")
@@ -289,6 +290,7 @@ class KuzuAdapter(StorageAdapter):
                 )
 
     def _reconcile_pairs(self, edge: EdgeDef) -> None:
+        _ident(edge.type)
         existing = {
             (row[0], row[1])
             for row in self._rows(f"CALL SHOW_CONNECTION('{edge.type}') RETURN *")
