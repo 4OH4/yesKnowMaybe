@@ -18,15 +18,18 @@ documentation of other releases describes:
   cannot be lived with on data that changes. Once a column is indexed,
   ``SET`` on it fails, even to ``NULL``. ``DROP_VECTOR_INDEX`` leaves the table
   unwritable (later inserts fail with "``_0_<index>_UPPER`` does not exist in
-  catalog") and the index name cannot be reused. Deleting and re-inserting an
-  embedding row instead keeps the row but drops it from index results. An
-  entity's embedding is computed after its node is written (M2), so the
-  column must be updatable, and an index that silently returns nothing is
-  worse than none. :meth:`KuzuAdapter.similar_nodes` therefore computes
+  catalog") and the index name cannot be reused. An entity's embedding is
+  computed after its node is written (M2), so the column must be updatable.
+  The workaround Kùzu suggests, deleting and re-inserting, cannot apply to
+  the entity node itself (deleting it would delete its edges). It would need
+  the vectors in a separate table per label, joined on every node read, and
+  a ``DELETE`` path in a backend that otherwise never deletes anything.
+  :meth:`KuzuAdapter.similar_nodes` therefore computes
   ``array_cosine_similarity`` over every stored ``FLOAT[<dim>]`` vector of the
-  label: exact rather than approximate, and about 30 ms for 1,000 nodes at
-  3,072 dimensions, well within the corpus scale (``DECISIONS.md``: knowledge
-  store). The column is created at ``embedding.dimension`` from config.
+  label: exact rather than approximate, and 30 to 120 ms per query over 1,000
+  nodes at 3,072 dimensions in two measurements, well within the corpus scale
+  (``DECISIONS.md``: knowledge store). The column is created at
+  ``embedding.dimension`` from config.
 * **Simple paths are filtered here, not by Kùzu.** On an undirected
   variable-length pattern, ``ACYCLIC`` returns paths that revisit the start
   node (``a-b-a``). :meth:`KuzuAdapter.traverse` asks for ``TRAIL`` paths (no

@@ -410,8 +410,9 @@ class StorageAdapter(ABC):
         an M2 concern (``DECISIONS.md``: embeddings).
 
         ``SimilarityHit.score`` is the **cosine similarity**, so higher is
-        closer. Both backends' vector indexes report cosine *distance*, so a
-        backend returns ``1 - distance``. ``min_score`` is an inclusive lower
+        closer. A backend whose search reports cosine *distance* (Spanner's
+        vector index) returns ``1 - distance``; the Kùzu backend computes the
+        similarity directly with an exact scan. ``min_score`` is an inclusive lower
         bound on that similarity (hits with ``score >= min_score`` are kept).
         Hits are ordered by score, highest first, at most ``limit`` of them;
         nodes with no embedding are never returned.

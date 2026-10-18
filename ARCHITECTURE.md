@@ -331,7 +331,7 @@ Hybrid graph + vector store. **Locked (see `DECISIONS.md`):** Spanner Graph
 (native GQL, built-in vector search, GraphRAG-ready) is the canonical/production
 target, but all ingestion, provenance-write and query code is built against a
 **thin storage-adapter interface**, not against Spanner APIs directly. **Kùzu**
-(embedded, Cypher, native vector index, no running infrastructure) is a
+(embedded, Cypher, vector similarity, no running infrastructure) is a
 first-class backend behind the same interface, used for local development and
 unattended automation (no credentials, nothing to provision). The adapter
 surface — and therefore either backend — must support:
@@ -361,7 +361,8 @@ nodes, since a duplicate is recoverable and a wrong merge is not.
 cannot update a column under its HNSW vector index, and dropping the index
 leaves the table unwritable, so the Kùzu backend computes cosine similarity
 over every stored vector instead. That is exact, and fast enough at this
-corpus's scale (about 30 ms for 1,000 vectors at 3,072 dimensions). The
+corpus's scale (30 to 120 ms per query over 1,000 vectors at 3,072
+dimensions). The
 details are in `src/dikms/storage/kuzu_backend.py`.
 
 ### Schema decisions worth stating outside the code
