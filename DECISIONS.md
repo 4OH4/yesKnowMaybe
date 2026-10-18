@@ -115,16 +115,16 @@ All other domain/range violations observed in the M0 corpus are **deliberately
 left as violations**, to be surfaced as warnings by the validator (YES-7) rather
 than legislated away.
 
-**Why:** A domain/range check over the three committed `output/*.json` files
-(628 relations, current ontology) flagged 70 violations — 11.1%. Of those, 42
+**Why:** A domain/range check over the three M0 `output/*.json` files
+(628 relations, current ontology) flagged 70 violations — 11.1%. Of those, 41
 are cases where the extraction is plainly right and the ontology was plainly too
-narrow: a programme *does* deliver hardware ("Project NYX delivers armed
-autonomous drones", ×21), a subsystem *is* part of a platform ("APKWS part_of
+narrow: a programme *does* deliver hardware, other programmes or a capability ("Project NYX delivers armed
+autonomous drones", ×21 across such targets), a subsystem *is* part of a platform ("APKWS part_of
 Typhoon", ×7), a government *does* fund an agency ("UK Government funds DSTL",
 ×7). Declaring those invalid would generate persistent noise against correct
 output and train the reader to ignore the warning channel.
 
-The remaining 28 are held as violations on purpose, because each is a real
+The remaining 29 are held as violations on purpose, because each is a real
 quality signal rather than an ontology gap:
 - `implements_standard` from `Organisation` (×4) is really flagging that
   treaties (Polaris Sales Agreement, Northwood Declaration) are being mistyped
@@ -134,6 +134,13 @@ quality signal rather than an ontology gap:
   `Capability` under v2's type set.
 - `part_of` with a `Term` domain (×7) is the Set-C over-granularity the M0
   review explicitly declined to accommodate.
+
+These three groups are the main categories, not an exhaustive partition. By
+relation the 29 are: `develops` 10, `part_of` 8, `implements_standard` 4,
+`delivers` 3, `funds` 2, `supports` 1, `governs` 1. (An earlier version of this
+entry said 28. It missed that one `develops` relation, Programme → Term,
+violated both its domain and its range; widening the domain cleared only the
+domain violation, so the range violation remains and counts.)
 
 **Evidence caveat:** only the FADS output (43 of 1,548 entities) post-dates
 ontology v2; the two policy PDFs were extracted before `Capability`, `Location`
