@@ -352,8 +352,9 @@ step, but the embedded Kùzu path needs none of that.
 ### Schema decisions worth stating outside the code
 
 The declarative schema lives in `src/dikms/storage/schema.py`, which carries the
-full element-by-element Kùzu ↔ Spanner Graph mapping. Four choices there are
-design decisions rather than implementation detail:
+full element-by-element Kùzu ↔ Spanner Graph mapping. Five choices in the
+storage layer (mostly in `src/dikms/storage/schema.py`) are design decisions
+rather than implementation detail:
 
 - **Node labels and edge types are derived from `config/ontology.yaml`**, never
   listed in code, so the ontology file stays the only place types are defined.
@@ -384,6 +385,14 @@ design decisions rather than implementation detail:
   trace-back resolves `source_id` to the `Source` node. The shared write
   helpers check that an edge with a `Source` endpoint (`extracted_from`,
   `mentions`) names that same `Source` in its `source_id`.
+- **A human `same_as` verdict survives a re-proposal.** A pair is one edge
+  whichever way round it is named, and an upsert overwrites every property,
+  so a plain re-write would reset `review_status` to `unreviewed`. Resolution
+  therefore writes `same_as` through `dikms.storage.write_same_as`, which
+  reads the stored edge (`StorageAdapter.get_edge`, which puts the pair in
+  the same canonical order as a write) and keeps any verdict other than
+  `unreviewed` unless the caller sets a new one explicitly. Confidence and
+  method are always updated; `created_at` stays the first proposal's.
 
 ## Retrieval
 
