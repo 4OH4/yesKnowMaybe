@@ -75,6 +75,8 @@ cloud path needs: the Vertex AI and Spanner APIs, the Spanner Graph instance +
 uv run dikms extract navalnews-fads-type83-2025
 ```
 
+Add `--verbose` to print per-chunk progress to stderr.
+
 Writes `output/<id>.json` (machine record, full provenance) and
 `output/<id>.review.md` (the manual-review sheet — annotate it to seed the
 eval set). Before concluding M0, sanity-check per-document extraction cost

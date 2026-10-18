@@ -9,6 +9,8 @@ fall outside the relation's declared domain/range: warned about, never dropped.
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -55,6 +57,7 @@ def extract_document(
     extractor: Extractor,
     target_chars: int = DEFAULT_TARGET_CHARS,
     max_chars: int = DEFAULT_MAX_CHARS,
+    progress: Callable[[str], None] | None = None,
 ) -> DocumentExtraction:
     chunks = chunk_document(parsed, target_chars=target_chars, max_chars=max_chars)
     doc = DocumentExtraction(source_id=parsed.source_id, parse_id=parsed.parse_id)
@@ -62,17 +65,31 @@ def extract_document(
     relation_names = ontology.relation_names()
     constraints = {r.name: (r.domain, r.range) for r in ontology.relation_types}
 
-    for chunk in chunks:
+    total = len(chunks)
+    started = time.monotonic()
+
+    def report(n: int, text: str) -> None:
+        if progress is not None:
+            elapsed = time.monotonic() - started
+            progress(f"chunk {n}/{total} · {text} · {elapsed:.0f}s elapsed")
+
+    for n, chunk in enumerate(chunks, start=1):
         try:
             result = extractor.extract(ontology, chunk)
         except Exception as exc:  # noqa: BLE001 — isolate one chunk's failure
             # Persist progress on the other chunks rather than losing the whole
             # document to one transient failure (e.g. quota exhaustion).
             doc.failed_chunks.append((chunk.chunk_id, f"{type(exc).__name__}: {exc}"))
+            report(n, f"{chunk.chunk_id} FAILED ({type(exc).__name__}: {exc})")
             continue
         doc.chunks.append(result)
         doc.warnings.extend(
             _validate(result, chunk.chunk_id, entity_names, relation_names, constraints)
+        )
+        report(
+            n,
+            f"{len(doc.all_entities())} entities/{len(doc.all_relations())} relations/"
+            f"{len(doc.all_proposals())} proposals (running totals)",
         )
     return doc
 
