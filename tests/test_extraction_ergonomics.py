@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import random
 
-import pytest
-
 from dikms.extraction.pipeline import DocumentExtraction, extract_document
 from dikms.models import (
     ChunkExtraction,
@@ -161,18 +159,62 @@ def test_pipeline_formats_retry_messages_with_chunk_number():
     assert "retry 2 in 15s (429 RESOURCE_EXHAUSTED)" in retries[0]
 
 
-def test_no_progress_means_no_on_retry_kwarg():
-    class Strict:
-        def extract(self, ontology, chunk):
+def test_extract_document_with_progress_over_each_stub_shape():
+    # A stub that does not accept on_retry would TypeError on every chunk and
+    # land in failed_chunks; fail loudly if any stub shape drifts.
+    class Plain:
+        def extract(self, ontology, chunk, on_retry=None):
             return ChunkExtraction(chunk_id=chunk.chunk_id)
 
     ont = Ontology(version=1, entity_types=[], relation_types=[])
-    doc = extract_document(_parsed(), ont, Strict(), target_chars=100, max_chars=150)
-    assert doc.chunks
+    for stub in (Plain(), _Stub()):
+        doc = extract_document(
+            _parsed(), ont, stub, target_chars=100, max_chars=150,
+            progress=lambda m: None,
+        )
+        assert all("TypeError" not in e for _, e in doc.failed_chunks)
+        assert doc.chunks
+
+
+def test_gemini_extract_passes_on_retry_through(monkeypatch):
+    from google.genai import errors
+
+    from dikms.extraction import client as client_mod
+    from dikms.models import Chunk
+
+    monkeypatch.setattr(client_mod.time, "sleep", lambda s: None)
+
+    class Models:
+        calls = 0
+
+        def generate_content(self, **kw):
+            Models.calls += 1
+            if Models.calls == 1:
+                raise errors.APIError(503, {"error": {"status": "UNAVAILABLE"}})
+
+            class R:
+                text = '{"entities": [], "relations": [], "proposals": []}'
+
+            return R()
+
+    class FakeClient:
+        models = Models()
+
+    ex = client_mod.GeminiExtractor("p", "l", "m", retry_backoff=(7,))
+    ex._client = FakeClient()
+    chunk = Chunk(
+        chunk_id="c1", source_id="s", parse_id="p", ordinal=1, start=0, end=4,
+        text="text",
+        section_refs=[],
+    )
+    ont = Ontology(version=1, entity_types=[], relation_types=[])
+    seen = []
+    result = ex.extract(ont, chunk, on_retry=lambda k, d, e: seen.append((k, d)))
+    assert result.chunk_id == "c1" and seen == [(1, 7)]
 
 
 def test_on_retry_called_per_backoff_with_configured_delays(monkeypatch):
-    pytest.importorskip("google.genai")
+
     from google.genai import errors
 
     from dikms.extraction import client as client_mod
