@@ -8,7 +8,9 @@ write or query talks to either directly. This module imports no database
 driver and must never do so.
 
 The surface is deliberately the minimum ``ARCHITECTURE.md`` needs — node/edge
-upsert with arbitrary declared edge properties, multi-hop traversal, vector
+upsert with arbitrary declared edge properties, node/edge reads by key
+(the edge read so a write can respect what is stored, e.g. a human
+``same_as`` verdict), multi-hop traversal, vector
 similarity over the same data, and a provenance trace-back read. It is not
 "whatever Kùzu happens to expose"; a method that only one backend could
 implement is a design smell to flag rather than add.
@@ -301,6 +303,13 @@ class StorageAdapter(ABC):
         the returned ``ref.source`` to ``ref.target``, not from the arguments
         as passed: for ``same_as`` the key puts the endpoints in canonical
         order, so writing B->A updates the stored A->B edge.
+
+        Because the update is full, a ``same_as`` write that omits
+        ``review_status`` stores the default ``unreviewed`` over whatever
+        verdict a human recorded. Code proposing matches therefore writes
+        ``same_as`` through :func:`dikms.storage.write_same_as`, which reads
+        the stored edge first and keeps a human verdict; ``upsert_edge``
+        itself stays a plain, unconditional write.
         """
 
     # -- reads ----------------------------------------------------------
@@ -308,6 +317,39 @@ class StorageAdapter(ABC):
     @abstractmethod
     def get_node(self, ref: NodeRef) -> NodeRecord | None:
         """Fetch one node by label and id, or ``None`` if absent."""
+
+    @abstractmethod
+    def get_edge(self, ref: EdgeRef) -> EdgeRecord | None:
+        """Fetch one stored edge by its key, or ``None`` if absent.
+
+        The edge counterpart of :meth:`get_node`, and the read that lets a
+        write depend on what is already stored (:func:`dikms.storage.write_same_as`
+        keeps a human ``same_as`` verdict this way). Semantics every backend
+        must share:
+
+        * **Resolve the ref first.** A backend calls
+          :meth:`canonical_edge_ref` on ``ref`` and looks up the key it
+          returns, never ``ref`` as passed. For ``same_as`` that puts the
+          endpoints in canonical order, exactly as :meth:`edge_ref` does on
+          write, so ``same_as(B, A)`` finds the stored ``same_as(A, B)``.
+          The same call rejects a ref that names no single stored edge
+          (``ValueError``) or an unknown edge type (``KeyError``) before the
+          backend queries anything; see :meth:`canonical_edge_ref`.
+        * **One edge or none.** ``ref`` names exactly one key: for
+          ``same_as`` the pair, for a fact-bearing edge one extraction (an
+          occurrence ref, :meth:`EdgeRef.is_occurrence`). Every stored
+          extraction of a relation is a :meth:`trace_back` or
+          :meth:`traverse` question, not this one.
+        * **The record is keyed as stored.** The returned
+          :class:`EdgeRecord`'s ``ref`` is the canonical key (what
+          :meth:`upsert_edge` returned when the edge was written), not
+          ``ref`` as passed. Its ``properties`` hold every declared property
+          of the edge type as stored, ``None`` where the last write had no
+          value (the full-overwrite rule in :meth:`upsert_edge`).
+        * **Absent means ``None``.** A permitted key with no stored edge,
+          including one whose endpoint nodes do not exist, returns ``None``
+          rather than raising.
+        """
 
     @abstractmethod
     def traverse(
@@ -557,6 +599,52 @@ class StorageAdapter(ABC):
             self.schema.edge(edge_type)  # KeyError naming the unknown type
         for label in target_labels or ():
             self.schema.node(label)  # KeyError naming the unknown label
+
+    def canonical_edge_ref(self, ref: EdgeRef) -> EdgeRef:
+        """The stored key a :meth:`get_edge` lookup of ``ref`` reads.
+
+        Resolves ``ref`` through :meth:`edge_ref`, so a read and a write of
+        the same edge agree on its key by construction: for a symmetric type
+        (``same_as``) the endpoints come back in canonical (label, id)
+        order, whichever way round ``ref`` names them.
+
+        Raises ``KeyError`` for an unknown edge type, and ``ValueError`` when
+        ``ref`` cannot name one stored edge:
+
+        * an empty endpoint id, or an endpoint pair the relation does not
+          permit (so a backend never queries a pair it has no table or edge
+          definition for);
+        * ``source_id`` or ``chunk_id`` on an edge type that has no
+          provenance block (``same_as``), whose key is the pair alone;
+        * a fact-bearing edge type without *both* ``source_id`` and
+          ``chunk_id``, since such a ref may match several stored
+          extractions.
+        """
+        definition = self.schema.edge(ref.type)
+        _require_id(ref.source.label, ref.source.id)
+        _require_id(ref.target.label, ref.target.id)
+        if (ref.source.label, ref.target.label) not in definition.pairs():
+            raise ValueError(
+                f"{ref.type}: {ref.source.label} -> {ref.target.label} is not a "
+                f"permitted endpoint pair for this relation"
+            )
+        if definition.property("source_id") is None:
+            if ref.source_id is not None or ref.chunk_id is not None:
+                raise ValueError(
+                    f"{ref.type} is keyed on its endpoints alone; a ref with "
+                    f"source_id/chunk_id names no stored edge"
+                )
+        elif not ref.is_occurrence():
+            raise ValueError(
+                f"{ref.type} is stored once per extraction; get_edge needs both "
+                f"source_id and chunk_id (use trace_back for every extraction)"
+            )
+        return self.edge_ref(
+            ref.type,
+            ref.source,
+            ref.target,
+            {"source_id": ref.source_id, "chunk_id": ref.chunk_id},
+        )
 
     def edge_ref(
         self,

@@ -5,8 +5,9 @@ Downstream code (ingestion, provenance writes, trace-back queries, retrieval)
 imports from here and nothing else — never a backend module, never a database
 driver. See :mod:`dikms.storage.base` for the contract,
 :mod:`dikms.storage.schema` for what the store holds (including the
-Kùzu/Spanner mapping table), and :mod:`dikms.storage.factory` for backend
-selection from ``storage.backend`` in ``config/extraction.yaml``.
+Kùzu/Spanner mapping table), :mod:`dikms.storage.identity` for writing
+``same_as`` without losing a human verdict, and :mod:`dikms.storage.factory`
+for backend selection from ``storage.backend`` in ``config/extraction.yaml``.
 """
 
 from .base import (
@@ -30,6 +31,7 @@ from .factory import (
     known_backends,
     resolve_backend,
 )
+from .identity import write_same_as
 from .schema import (
     MANDATORY_PROVENANCE_PROPERTIES,
     PROVENANCE_PROPERTIES,
@@ -85,4 +87,5 @@ __all__ = [
     "resolve_backend",
     "schema_from_config",
     "validate_properties",
+    "write_same_as",
 ]

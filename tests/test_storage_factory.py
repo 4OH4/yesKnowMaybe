@@ -30,6 +30,8 @@ class _FakeAdapter(StorageAdapter):
 
     def get_node(self, ref): ...
 
+    def get_edge(self, ref): ...
+
     def traverse(self, start, **kwargs):
         return []
 
