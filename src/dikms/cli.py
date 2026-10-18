@@ -5,8 +5,9 @@ Subcommands:
   parse    parse one source to clean text + structure, print a summary
   chunk    parse + chunk one source, print a chunk summary
   extract  full pipeline for one source (requires GCP/Vertex), write output
+  align    derive verified spans for an existing extraction output
 
-Parse and chunk run without GCP; extract needs Vertex credentials (see
+Parse, chunk and align run without GCP; extract needs Vertex credentials (see
 SETUP.md). Defaults assume the command is run from the repository root.
 """
 
@@ -63,6 +64,24 @@ def main(argv: list[str] | None = None) -> int:
         help="print per-chunk progress to stderr",
     )
 
+    p_align = sub.add_parser(
+        "align", help="derive verified spans for an existing extraction output"
+    )
+    p_align.add_argument("source_id")
+    p_align.add_argument("--config", default=DEFAULT_CONFIG)
+    p_align.add_argument("--output", default=DEFAULT_OUTPUT)
+    p_align.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report the alignment rate without rewriting the output file",
+    )
+    p_align.add_argument(
+        "--show-unresolved",
+        type=int,
+        default=20,
+        help="how many unresolved quotes to list (0 for none)",
+    )
+
     args = parser.parse_args(argv)
     sources = load_sources(args.sources)
 
@@ -75,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_chunk(args, sources)
         if args.command == "extract":
             return _cmd_extract(args, sources)
+        if args.command == "align":
+            return _cmd_align(args, sources)
     # ConfigError specifically — a malformed config file is a user error and
     # should report as one, not a traceback. Other ValueErrors are bugs and
     # keep their traceback.
@@ -165,6 +186,70 @@ def _cmd_extract(args, sources) -> int:
     print(f"  wrote {json_path}")
     print(f"  wrote {md_path}")
     return 1 if doc.failed_chunks else 0
+
+
+def _cmd_align(args, sources) -> int:
+    # No Vertex call here: alignment re-parses the local corpus copy and matches
+    # quotes offline, so it runs with no credentials.
+    from .alignment import align_document
+    from .config import AlignmentConfig, ExtractionConfig
+    from .output import read_json, write_json
+
+    source = get_source(sources, args.source_id)
+    extraction_config = ExtractionConfig.load(args.config)
+    alignment_config = AlignmentConfig.load(args.config)
+
+    json_path = Path(args.output) / f"{source.id}.json"
+    doc = read_json(json_path)
+    parsed = parse_source(source.id, source.fmt, load_bytes(source, args.corpus))
+    chunks = chunk_document(
+        parsed,
+        target_chars=extraction_config.target_chars,
+        max_chars=extraction_config.max_chars,
+    )
+    report = align_document(doc, parsed, chunks, alignment_config)
+
+    print(
+        f"{source.id}: {report.total_aligned}/{report.total} aligned "
+        f"({report.rate:.1%}) · {report.total_unresolved} unresolved "
+        f"(floor {alignment_config.min_ratio})"
+    )
+    if report.total:
+        by_kind = " · ".join(
+            f"{kind} {report.aligned[kind]}/{total}"
+            for kind, total in (
+                (k, report.aligned[k] + report.unresolved[k])
+                for k in ("entity", "relation", "proposal")
+            )
+            if total
+        )
+        print(f"  by kind: {by_kind}")
+        methods = " · ".join(f"{m} {n}" for m, n in report.methods.most_common())
+        print(f"  by method: {methods or 'none'}")
+    if report.ambiguous:
+        print(
+            f"  ambiguous (first match within the chunk used): {len(report.ambiguous)}"
+        )
+        for amb in report.ambiguous[: args.show_unresolved]:
+            print(f"    {amb.occurrences}x {amb.chunk_id}: {_snip(amb.quote)}")
+    if report.unresolved_facts and args.show_unresolved:
+        print("  unresolved:")
+        for item in report.unresolved_facts[: args.show_unresolved]:
+            print(f"    {item.kind}: {_snip(item.quote)}")
+        remaining = len(report.unresolved_facts) - args.show_unresolved
+        if remaining > 0:
+            print(f"    … and {remaining} more")
+
+    if args.dry_run:
+        print("  dry run — output file not rewritten")
+    else:
+        print(f"  wrote {write_json(doc, json_path)}")
+    return 0
+
+
+def _snip(text: str, limit: int = 90) -> str:
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: limit - 1] + "…"
 
 
 if __name__ == "__main__":

@@ -185,3 +185,30 @@ class ExtractionConfig:
                 "storage adapter is selected from config, not chosen in code."
             )
         return self.storage
+
+
+@dataclass
+class AlignmentConfig:
+    """Tuning parameters for post-hoc span alignment.
+
+    The values below are fallbacks only — ``config/extraction.yaml`` carries the
+    real ones and is the surface these get tuned on, since the right floor is
+    only knowable from real extraction output (see the alignment rates in
+    ``notes/M1-alignment.md``).
+    """
+
+    min_ratio: float = 0.95
+    min_fuzzy_chars: int = 12
+    fuzzy_anchor_chars: int = 3
+
+    @classmethod
+    def load(cls, path: str | Path) -> AlignmentConfig:
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+        alignment = data.get("alignment", {})
+        return cls(
+            min_ratio=float(alignment.get("min_ratio", cls.min_ratio)),
+            min_fuzzy_chars=int(alignment.get("min_fuzzy_chars", cls.min_fuzzy_chars)),
+            fuzzy_anchor_chars=int(
+                alignment.get("fuzzy_anchor_chars", cls.fuzzy_anchor_chars)
+            ),
+        )

@@ -42,6 +42,7 @@ Carried from the M0 review (hardening, do alongside M1):
 - De-duplicate/aggregate type proposals before review (they recur per chunk)
 - Add `--verbose` per-chunk progress logging for long runs (DIP is opaque for ~25 min)
 - Request a Vertex Gemini quota increase before larger runs (still outstanding — human step)
+- Require contiguous verbatim supporting quotes in the extraction prompt — stitched/elided quotes are the single largest cause of unresolved spans (see `notes/M1-alignment.md`)
 - [done] Service account for unattended runs — provisioned via Terraform (`terraform/iam.tf`) with ADC impersonation (no key file); replaces personal-user ADC once `impersonating_principal` is set
 
 ## M2
